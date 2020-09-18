@@ -1,10 +1,8 @@
 ---
 name: Feature request
 about: Request a new functionality unrelated to any particular site or extractor
-title: "[Feature Request]"
-labels: Request
-assignees: ''
-
+title: ''
+labels: 'request'
 ---
 
 <!--

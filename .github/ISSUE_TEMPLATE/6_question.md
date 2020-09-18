@@ -1,10 +1,8 @@
 ---
 name: Ask question
 about: Ask youtube-dl related question
-title: "[Question]"
-labels: question
-assignees: ''
-
+title: ''
+labels: 'question'
 ---
 
 <!--
