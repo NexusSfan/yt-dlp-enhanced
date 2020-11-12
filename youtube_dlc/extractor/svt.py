@@ -9,7 +9,6 @@ from ..utils import (
     determine_ext,
     dict_get,
     int_or_none,
-    unified_timestamp,
     str_or_none,
     strip_or_none,
     try_get,
@@ -45,8 +44,7 @@ class SVTBaseIE(InfoExtractor):
                     'format_id': player_type,
                     'url': vurl,
                 })
-        rights = try_get(video_info, lambda x: x['rights'], dict) or {}
-        if not formats and rights.get('geoBlockedSweden'):
+        if not formats and video_info.get('rights', {}).get('geoBlockedSweden'):
             self.raise_geo_restricted(
                 'This video is only available in Sweden',
                 countries=self._GEO_COUNTRIES)
@@ -72,7 +70,6 @@ class SVTBaseIE(InfoExtractor):
         episode = video_info.get('episodeTitle')
         episode_number = int_or_none(video_info.get('episodeNumber'))
 
-        timestamp = unified_timestamp(rights.get('validFrom'))
         duration = int_or_none(dict_get(video_info, ('materialLength', 'contentDuration')))
         age_limit = None
         adult = dict_get(
@@ -87,7 +84,6 @@ class SVTBaseIE(InfoExtractor):
             'formats': formats,
             'subtitles': subtitles,
             'duration': duration,
-            'timestamp': timestamp,
             'age_limit': age_limit,
             'series': series,
             'season_number': season_number,
@@ -140,38 +136,25 @@ class SVTPlayIE(SVTPlayBaseIE):
     IE_DESC = 'SVT Play and Öppet arkiv'
     _VALID_URL = r'''(?x)
                     (?:
-                        (?:
-                            svt:|
-                            https?://(?:www\.)?svt\.se/barnkanalen/barnplay/[^/]+/
-                        )
-                        (?P<svt_id>[^/?#&]+)|
+                        svt:(?P<svt_id>[^/?#&]+)|
                         https?://(?:www\.)?(?:svtplay|oppetarkiv)\.se/(?:video|klipp|kanaler)/(?P<id>[^/?#&]+)
                     )
                     '''
     _TESTS = [{
-        'url': 'https://www.svtplay.se/video/26194546/det-har-ar-himlen',
-        'md5': '2382036fd6f8c994856c323fe51c426e',
+        'url': 'http://www.svtplay.se/video/5996901/flygplan-till-haile-selassie/flygplan-till-haile-selassie-2',
+        'md5': '2b6704fe4a28801e1a098bbf3c5ac611',
         'info_dict': {
-            'id': 'jNwpV9P',
+            'id': '5996901',
             'ext': 'mp4',
-            'title': 'Det här är himlen',
-            'timestamp': 1586044800,
-            'upload_date': '20200405',
-            'duration': 3515,
-            'thumbnail': r're:^https?://(?:.*[\.-]jpg|www.svtstatic.se/image/.*)$',
+            'title': 'Flygplan till Haile Selassie',
+            'duration': 3527,
+            'thumbnail': r're:^https?://.*[\.-]jpg$',
             'age_limit': 0,
             'subtitles': {
                 'sv': [{
-                    'ext': 'vtt',
+                    'ext': 'wsrt',
                 }]
             },
-        },
-        'params': {
-            'format': 'bestvideo',
-            # skip for now due to download test asserts that segment is > 10000 bytes and svt uses
-            # init segments that are smaller
-            # AssertionError: Expected test_SVTPlay_jNwpV9P.mp4 to be at least 9.77KiB, but it's only 864.00B
-            'skip_download': True,
         },
     }, {
         # geo restricted to Sweden
@@ -188,12 +171,6 @@ class SVTPlayIE(SVTPlayBaseIE):
         'only_matching': True,
     }, {
         'url': 'svt:14278044',
-        'only_matching': True,
-    }, {
-        'url': 'https://www.svt.se/barnkanalen/barnplay/kar/eWv5MLX/',
-        'only_matching': True,
-    }, {
-        'url': 'svt:eWv5MLX',
         'only_matching': True,
     }]
 
@@ -259,10 +236,7 @@ class SVTPlayIE(SVTPlayBaseIE):
                  r'["\']svtId["\']\s*:\s*["\']([\da-zA-Z-]+)'),
                 webpage, 'video id')
 
-        info_dict = self._extract_by_video_id(svt_id, webpage)
-        info_dict['thumbnail'] = thumbnail
-
-        return info_dict
+        return self._extract_by_video_id(svt_id, webpage)
 
 
 class SVTSeriesIE(SVTPlayBaseIE):
@@ -386,7 +360,7 @@ class SVTPageIE(InfoExtractor):
 
     @classmethod
     def suitable(cls, url):
-        return False if SVTIE.suitable(url) or SVTPlayIE.suitable(url) else super(SVTPageIE, cls).suitable(url)
+        return False if SVTIE.suitable(url) else super(SVTPageIE, cls).suitable(url)
 
     def _real_extract(self, url):
         path, display_id = re.match(self._VALID_URL, url).groups()

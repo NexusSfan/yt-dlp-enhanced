@@ -10,6 +10,7 @@ from .adobepass import AdobePassIE
 from ..compat import compat_urllib_parse_unquote
 from ..utils import (
     int_or_none,
+    js_to_json,
     parse_duration,
     smuggle_url,
     try_get,
@@ -393,8 +394,8 @@ class NBCNewsIE(ThePlatformIE):
         webpage = self._download_webpage(url, video_id)
 
         data = self._parse_json(self._search_regex(
-            r'<script[^>]+id="__NEXT_DATA__"[^>]*>({.+?})</script>',
-            webpage, 'bootstrap json'), video_id)['props']['initialState']
+            r'window\.__data\s*=\s*({.+});', webpage,
+            'bootstrap json'), video_id, js_to_json)
         video_data = try_get(data, lambda x: x['video']['current'], dict)
         if not video_data:
             video_data = data['article']['content'][0]['primaryMedia']['video']

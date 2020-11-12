@@ -17,7 +17,6 @@ from ..utils import (
     parse_duration,
     try_get,
     url_or_none,
-    urljoin,
 )
 from .dailymotion import DailymotionIE
 
@@ -129,38 +128,18 @@ class FranceTVIE(InfoExtractor):
 
         is_live = None
 
-        videos = []
-
-        for video in (info.get('videos') or []):
-            if video.get('statut') != 'ONLINE':
-                continue
-            if not video.get('url'):
-                continue
-            videos.append(video)
-
-        if not videos:
-            for device_type in ['desktop', 'mobile']:
-                fallback_info = self._download_json(
-                    'https://player.webservices.francetelevisions.fr/v1/videos/%s' % video_id,
-                    video_id, 'Downloading fallback %s video JSON' % device_type, query={
-                        'device_type': device_type,
-                        'browser': 'chrome',
-                    }, fatal=False)
-
-                if fallback_info and fallback_info.get('video'):
-                    videos.append(fallback_info['video'])
-
         formats = []
-        for video in videos:
-            video_url = video.get('url')
+        for video in info['videos']:
+            if video['statut'] != 'ONLINE':
+                continue
+            video_url = video['url']
             if not video_url:
                 continue
             if is_live is None:
                 is_live = (try_get(
-                    video, lambda x: x['plages_ouverture'][0]['direct'], bool) is True
-                    or video.get('is_live') is True
-                    or '/live.francetv.fr/' in video_url)
-            format_id = video.get('format')
+                    video, lambda x: x['plages_ouverture'][0]['direct'],
+                    bool) is True) or '/live.francetv.fr/' in video_url
+            format_id = video['format']
             ext = determine_ext(video_url)
             if ext == 'f4m':
                 if georestricted:
@@ -175,9 +154,6 @@ class FranceTVIE(InfoExtractor):
                     sign(video_url, format_id), video_id, 'mp4',
                     entry_protocol='m3u8_native', m3u8_id=format_id,
                     fatal=False))
-            elif ext == 'mpd':
-                formats.extend(self._extract_mpd_formats(
-                    sign(video_url, format_id), video_id, mpd_id=format_id, fatal=False))
             elif video_url.startswith('rtmp'):
                 formats.append({
                     'url': video_url,
@@ -190,7 +166,6 @@ class FranceTVIE(InfoExtractor):
                         'url': video_url,
                         'format_id': format_id,
                     })
-
         self._sort_formats(formats)
 
         title = info['titre']
@@ -210,10 +185,10 @@ class FranceTVIE(InfoExtractor):
         return {
             'id': video_id,
             'title': self._live_title(title) if is_live else title,
-            'description': clean_html(info.get('synopsis')),
-            'thumbnail': urljoin('https://sivideo.webservices.francetelevisions.fr', info.get('image')),
-            'duration': int_or_none(info.get('real_duration')) or parse_duration(info.get('duree')),
-            'timestamp': int_or_none(try_get(info, lambda x: x['diffusion']['timestamp'])),
+            'description': clean_html(info['synopsis']),
+            'thumbnail': compat_urlparse.urljoin('http://pluzz.francetv.fr', info['image']),
+            'duration': int_or_none(info.get('real_duration')) or parse_duration(info['duree']),
+            'timestamp': int_or_none(info['diffusion']['timestamp']),
             'is_live': is_live,
             'formats': formats,
             'subtitles': subtitles,
