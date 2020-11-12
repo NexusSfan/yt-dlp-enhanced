@@ -59,9 +59,9 @@
  - **ARD:mediathek**
  - **ARDBetaMediathek**
  - **Arkena**
- - **ArteTV**
- - **ArteTVEmbed**
- - **ArteTVPlaylist**
+ - **arte.tv:+7**
+ - **arte.tv:embed**
+ - **arte.tv:playlist**
  - **AsianCrush**
  - **AsianCrushPlaylist**
  - **AtresPlayer**
@@ -104,14 +104,12 @@
  - **BIQLE**
  - **BitChute**
  - **BitChuteChannel**
- - **bitwave.tv**
  - **BleacherReport**
  - **BleacherReportCMS**
  - **blinkx**
  - **Bloomberg**
  - **BokeCC**
  - **BostonGlobe**
- - **Box**
  - **Bpb**: Bundeszentrale für politische Bildung
  - **BR**: Bayerischer Rundfunk
  - **BravoTV**
@@ -159,7 +157,6 @@
  - **Chilloutzone**
  - **chirbit**
  - **chirbit:profile**
- - **cielotv.it**
  - **Cinchcast**
  - **Cinemax**
  - **CiscoLiveSearch**
@@ -427,7 +424,6 @@
  - **la7.it**
  - **laola1tv**
  - **laola1tv:embed**
- - **lbry.tv**
  - **LCI**
  - **Lcp**
  - **LcpPlay**
@@ -478,7 +474,6 @@
  - **massengeschmack.tv**
  - **MatchTV**
  - **MDR**: MDR.DE and KiKA
- - **MedalTV**
  - **media.ccc.de**
  - **media.ccc.de:lists**
  - **Medialaan**
@@ -622,7 +617,6 @@
  - **Nuvid**
  - **NYTimes**
  - **NYTimesArticle**
- - **NYTimesCooking**
  - **NZZ**
  - **ocw.mit.edu**
  - **OdaTV**
@@ -675,8 +669,6 @@
  - **PicartoVod**
  - **Piksel**
  - **Pinkbike**
- - **Pinterest**
- - **PinterestCollection**
  - **Pladform**
  - **Platzi**
  - **PlatziCourse**
@@ -773,7 +765,6 @@
  - **RTVNH**
  - **RTVS**
  - **RUHD**
- - **RumbleEmbed**
  - **rutube**: Rutube videos
  - **rutube:channel**: Rutube channels
  - **rutube:embed**: Rutube embedded videos
@@ -844,14 +835,12 @@
  - **SpankBangPlaylist**
  - **Spankwire**
  - **Spiegel**
+ - **Spiegel:Article**: Articles on spiegel.de
+ - **Spiegeltv**
  - **sport.francetvinfo.fr**
  - **Sport5**
  - **SportBox**
  - **SportDeutschland**
- - **Spreaker**
- - **SpreakerPage**
- - **SpreakerShow**
- - **SpreakerShowPage**
  - **SpringboardPlatform**
  - **Sprout**
  - **sr:mediathek**: Saarländischer Rundfunk
@@ -955,7 +944,6 @@
  - **TV2DKBornholmPlay**
  - **TV4**: tv4.se and tv4play.se
  - **TV5MondePlus**: TV5MONDE+
- - **tv8.it**
  - **TVA**
  - **TVANouvelles**
  - **TVANouvellesArticle**
@@ -1070,7 +1058,7 @@
  - **vk:wallpost**
  - **vlive**
  - **vlive:channel**
- - **vlive:post**
+ - **vlive:playlist**
  - **Vodlocker**
  - **VODPl**
  - **VODPlatform**
@@ -1159,17 +1147,20 @@
  - **YourPorn**
  - **YourUpload**
  - **youtube**: YouTube.com
- - **youtube:favorites**: YouTube.com liked videos, ":ytfav" for short (requires authentication)
+ - **youtube:channel**: YouTube.com channels
+ - **youtube:favorites**: YouTube.com favourite videos, ":ytfav" for short (requires authentication)
  - **youtube:history**: Youtube watch history, ":ythistory" for short (requires authentication)
+ - **youtube:live**: YouTube.com live streams
  - **youtube:playlist**: YouTube.com playlists
+ - **youtube:playlists**: YouTube.com user/channel playlists
  - **youtube:recommended**: YouTube.com recommended videos, ":ytrec" for short (requires authentication)
- - **youtube:search**: YouTube.com searches, "ytsearch" keyword
- - **youtube:search:date**: YouTube.com searches, newest videos first, "ytsearchdate" keyword
+ - **youtube:search**: YouTube.com searches
+ - **youtube:search:date**: YouTube.com searches, newest videos first
  - **youtube:search_url**: YouTube.com search URLs
- - **youtube:subscriptions**: YouTube.com subscriptions feed, ":ytsubs" for short (requires authentication)
- - **youtube:tab**: YouTube.com tab
+ - **youtube:show**: YouTube.com (multi-season) shows
+ - **youtube:subscriptions**: YouTube.com subscriptions feed, "ytsubs" keyword (requires authentication)
+ - **youtube:user**: YouTube.com user videos (URL or "ytuser" keyword)
  - **youtube:watchlater**: Youtube watch later list, ":ytwatchlater" for short (requires authentication)
- - **YoutubeYtUser**: YouTube.com user videos, URL or "ytuser" keyword
  - **Zapiks**
  - **Zaq1**
  - **Zattoo**
