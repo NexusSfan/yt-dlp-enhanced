@@ -56,6 +56,7 @@ class InstagramBaseIE(InfoExtractor):
         'instagram.com',
         '.instagram.com',
     )
+    _DTSG = None
 
     @functools.cached_property
     def _can_impersonate(self):
@@ -105,6 +106,25 @@ class InstagramBaseIE(InfoExtractor):
             traverse_obj(media, ('dimensions', name), expected_type=int_or_none)
             or int_or_none(self._html_search_meta(
                 (f'og:video:{name}', f'video:{name}'), webpage or '', default=None)))
+
+    def _get_fb_dstg(self, webpage=None):
+        if self._DTSG:
+            return self._DTSG
+
+        if not webpage:
+            webpage = self._download_webpage(self._BASE_URL, None, 'Downloading main page')
+
+        self._DTSG = self._search_regex(
+            [
+                r'\bdtsg"\s*:\s*{\s*"token":\s*["\']([^"\']+)["\']',
+                r'\b(?:DTSGInitData|DTSGInitialData)",.+?"token":\s*"([^"]+)"',
+                r'"f":\s*"(\w+:\d+:\d+[^"]*)"',
+            ],
+            webpage,
+            'Fb Dtsg',
+            None,
+        )
+        return self._DTSG
 
     def _extract_nodes(self, nodes, is_direct=False):
         for idx, node in enumerate(nodes, start=1):
@@ -718,40 +738,76 @@ class InstagramStoryIE(InstagramBaseIE):
         'only_matching': True,
     }]
 
-    def _yeild_relay_data(self, video_id, webpage):
+    def _yield_relay_data(self, video_id, webpage):
         for relay in re.findall(r'data-sjs>\s*({.*?})\s*</script>', webpage):
             yield self._parse_json(relay, video_id, fatal=False)
 
     def _get_user_id(self, webpage):
-        return self._search_regex(r'\b(?:reel_ids_arr|user_id)":\s*\[?"(\d{9,10})"', webpage, 'user id', default=None)
+        user_id = traverse_obj(
+            re.findall(r'"user":\s*({.+?},(?:.+?}))?,?', webpage),
+            (..., {json.loads}, ('user_id', 'instagram_pk'), {str}, any))
+        if not user_id:
+            user_id = self._search_regex(r'"(?:reel_ids_arr|profile_id|container_id)"\s*:\s*\[?\s*"(\d+)"', webpage, 'User id', default=None)
+        user_name = self._search_regex(r'https?://(?:www\.)?instagram.com/(?:stories)/([^/?#]+/?)', webpage, 'user name', None)
+        if not user_id and user_name:
+            user_webpage = self._download_webpage(f'{self._BASE_URL}{user_name}', None, 'Downloading user page')
+            user_id = self._get_user_id(user_webpage)
+        return user_id
 
     def _real_extract(self, url):
         username, story_id = self._match_valid_url(url).group('user', 'id')
         if username == 'highlights' and not story_id:  # story id is only mandatory for highlights
             raise ExtractorError('Input URL is missing a highlight ID', expected=True)
+        if username != 'highlights' and not self._cookies_passed:
+            self.raise_login_required('Story cannot be extract without authenticated cookies')  # TODO: Add better error message
+
         display_id = story_id or username
         story_webpage = self._download_webpage(url, display_id, impersonate=self._can_impersonate and self._is_web_app)
 
-        user_id = self._get_user_id(story_webpage)
+        user_id = None
         if username == 'highlights':
             story_info_url = f'highlight:{story_id}'
         else:
+            user_id = self._get_user_id(story_webpage)
             if not user_id:  # user id is only mandatory for non-highlights
                 raise ExtractorError('Unable to extract user id')
             story_info_url = user_id
 
-        videos = traverse_obj(self._yeild_relay_data(display_id, story_webpage), (
-            ..., 'require', ..., ..., ..., '__bbox',
-            'require', ..., ..., ..., '__bbox',
-            'result', 'data', 'xdt_api__v1__feed__reels_media',
-            'reels_media', {list}, lambda _, x: x.get('id') == str(854156206), {dict},
-        ), get_all=False,
+        videos = traverse_obj(
+            self._yield_relay_data(display_id, story_webpage), (
+                ..., 'require', ..., ..., ..., '__bbox',
+                'require', ..., ..., ..., '__bbox',
+                'result', 'data',
+                lambda x, _: x.startswith('xdt_api__v1'),
+                ('reels_media', 'edges'),
+                lambda _, v: v.get('items') or (v.get('id') or '') == user_id or story_id in v['node']['id'],
+                ('node', None), any),
         )
         if not videos:
-            videos = traverse_obj(self._download_json(
-                f'{self._API_BASE_URL}/feed/reels_media/?reel_ids={story_info_url}',
-                display_id, errnote=False, fatal=False, headers=self._api_headers,
-                impersonate=self._can_impersonate and self._is_web_app), 'reels')
+            videos = traverse_obj(
+                self._download_json(
+                    'https://www.instagram.com/graphql/query',
+                    display_id,
+                    headers={
+                        **self._api_headers,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'x-root-field-name': 'xdt_api__v1__feed__reels_media',
+                    },
+                    data=urlencode_postdata({
+                        'variables': json.dumps({
+                            'reel_ids_arr': [story_info_url],
+                            '__relay_internal__pv__PolarisCommunityNoteStoriesLabelEnabledrelayprovider': True,
+                        }, separators=(',', ':')),
+                        'doc_id': 29341065465524437,
+                        'fb_dtsg': self._get_fb_dstg(story_webpage),
+                    }),
+                    impersonate=self._can_impersonate and self._is_web_app,
+                    errnote=False,
+                    fatal=False,
+                ),
+                ('data', 'xdt_api__v1__feed__reels_media', 'reels_media', lambda _, x: x['items'], {dict}, any),
+            )
+
         if not videos:
             self.raise_login_required('You need to log in to access this content')
         user_info = traverse_obj(videos, (user_id, 'user', {dict})) or {}
@@ -761,10 +817,10 @@ class InstagramStoryIE(InstagramBaseIE):
         if not story_title:
             story_title = f'Story by {username}'
 
-        highlights = traverse_obj(videos, (f'highlight:{story_id}', 'items'), (user_id, 'items'), ('items', {list})) or []
+        highlights = traverse_obj(videos, ((f'highlight:{story_id}', user_id, None), 'items', ..., {dict}))
         info_data = []
         for highlight in highlights:
-            highlight.setdefault('user', {}).update(user_info)
+            highlight.setdefault('user', {}).update(user_info)  # Is 'user' key is valid in info_dict ?
             highlight_data = self._extract_product(highlight)
             if highlight_data.get('formats'):
                 info_data.append({
