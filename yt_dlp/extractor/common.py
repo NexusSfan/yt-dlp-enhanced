@@ -2821,6 +2821,7 @@ class InfoExtractor:
     def _extract_mpd_formats(self, *args, **kwargs):
         fmts, subs = self._extract_mpd_formats_and_subtitles(*args, **kwargs)
         if subs:
+            # Probably we should call _extract_mpd_formats_and_subtitles instead.
             self._report_ignoring_subs('DASH')
         return fmts
 
