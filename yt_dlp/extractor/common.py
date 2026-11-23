@@ -1057,7 +1057,7 @@ class InfoExtractor:
                 urlh.url, video_id, data,
                 trim_length=self.get_param('trim_file_name'))
             self.to_screen(f'Saving request to {filename}')
-            with open(filename, 'wb', buffering=1048576) as outf:
+            with open(filename, 'wb') as outf:
                 outf.write(webpage_bytes)
 
         content = self.__decode_webpage(webpage_bytes, encoding, urlh.headers)
@@ -1311,7 +1311,7 @@ class InfoExtractor:
             'entries': entries,
         }
 
-    def _search_regex(self, pattern, string, name, default=NO_DEFAULT, fatal=True, flags=0, group=None):
+    def _search_regex(self, pattern, string, name, default=NO_DEFAULT, fatal=True, flags=re.NOFLAG, group=None):
         """
         Perform a regex search on the given string, using a single or a list of
         patterns returning the first matching group.
@@ -1373,7 +1373,7 @@ class InfoExtractor:
                     f'Unable to extract {_name} - Failed to parse JSON: {e}', video_id=video_id)
         return default
 
-    def _html_search_regex(self, pattern, string, name, default=NO_DEFAULT, fatal=True, flags=0, group=None):
+    def _html_search_regex(self, pattern, string, name, default=NO_DEFAULT, fatal=True, flags=re.NOFLAG, group=None):
         """
         Like _search_regex, but strips HTML tags and unescapes entities.
         """
@@ -1412,12 +1412,6 @@ class InfoExtractor:
             return None, None
 
         self.write_debug(f'Using netrc for {netrc_machine} authentication')
-
-        # compat: <=py3.10: netrc cannot parse tokens as empty strings, will return `""` instead
-        # Ref: https://github.com/yt-dlp/yt-dlp/issues/11413
-        #      https://github.com/python/cpython/commit/15409c720be0503131713e3d3abc1acd0da07378
-        if sys.version_info < (3, 11):
-            return tuple(x if x != '""' else '' for x in info[::2])
 
         return info[0], info[2]
 

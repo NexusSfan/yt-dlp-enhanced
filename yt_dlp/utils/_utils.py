@@ -194,7 +194,7 @@ def write_json_file(obj, fn):
 
     tf = tempfile.NamedTemporaryFile(
         prefix=f'{os.path.basename(fn)}.', dir=os.path.dirname(fn),
-        suffix='.tmp', delete=False, mode='w', encoding='utf-8', buffering=1048576)
+        suffix='.tmp', delete=False, mode='w', encoding='utf-8')
 
     try:
         with tf:
@@ -608,7 +608,7 @@ def sanitize_open(filename, open_mode):
                     raise LockingUnsupportedError
                 stream = locked_file(filename, open_mode, block=False).__enter__()
             except OSError:
-                stream = open(filename, open_mode, buffering=1048576)
+                stream = open(filename, open_mode)
             return stream, filename
         except OSError as err:
             if attempt or err.errno in (errno.EACCES,):
@@ -984,7 +984,7 @@ class ExtractorError(YoutubeDLError):
         If expected is set, this is a normal error message and most likely not a bug in yt-dlp.
         """
         from ..networking.exceptions import network_exceptions
-        if sys.exc_info()[0] in network_exceptions:
+        if type(sys.exception()) in network_exceptions:
             expected = True
 
         self.orig_msg = str(msg)
@@ -1337,7 +1337,7 @@ def datetime_from_str(date_str, precision='auto', format='%Y%m%d'):
     if precision == 'auto':
         auto_precision = True
         precision = 'microsecond'
-    today = datetime_round(dt.datetime.now(dt.timezone.utc), precision)
+    today = datetime_round(dt.datetime.now(dt.UTC), precision)
     if date_str in ('now', 'today'):
         return today
     if date_str == 'yesterday':
