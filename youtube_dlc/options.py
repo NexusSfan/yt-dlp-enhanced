@@ -345,6 +345,10 @@ def parseOpts(overrideArguments=None):
         dest='download_archive',
         help='Download only videos not listed in the archive file. Record the IDs of all downloaded videos in it.')
     selection.add_option(
+        '--break-on-existing',
+        action='store_true', dest='break_on_existing', default=False,
+        help="Stop the download process after attempting to download a file that's in the archive.")
+    selection.add_option(
         '--include-ads',
         dest='include_ads', action='store_true',
         help='Download advertisements as well (experimental)')
@@ -580,6 +584,10 @@ def parseOpts(overrideArguments=None):
             'Upper bound of a range for randomized sleep before each download '
             '(maximum possible number of seconds to sleep). Must only be used '
             'along with --min-sleep-interval.'))
+    workarounds.add_option(
+        '--sleep-subtitles',
+        dest='sleep_interval_subtitles', default=0, type=int,
+        help='Enforce sleep interval on subtitles as well')
 
     verbosity = optparse.OptionGroup(parser, 'Verbosity / Simulation Options')
     verbosity.add_option(
@@ -771,6 +779,9 @@ def parseOpts(overrideArguments=None):
         '--rm-cache-dir',
         action='store_true', dest='rm_cachedir',
         help='Delete all filesystem cache files')
+    filesystem.add_option(
+        '--trim-file-name', dest='trim_file_name', default=0, type=int,
+        help='Limit the filename length (extension excluded)')
 
     thumbnail = optparse.OptionGroup(parser, 'Thumbnail images')
     thumbnail.add_option(
