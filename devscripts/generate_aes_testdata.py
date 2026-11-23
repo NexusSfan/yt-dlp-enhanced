@@ -1,20 +1,22 @@
-from __future__ import unicode_literals
+#!/usr/bin/env python3
+
+# Allow direct execution
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 import codecs
 import subprocess
 
-import os
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from youtube_dlc.utils import intlist_to_bytes
-from youtube_dlc.aes import aes_encrypt, key_expansion
+from yt_dlp.aes import aes_encrypt, key_expansion
 
 secret_msg = b'Secret message goes here'
 
 
 def hex_str(int_list):
-    return codecs.encode(intlist_to_bytes(int_list), 'hex')
+    return codecs.encode(bytes(int_list), 'hex')
 
 
 def openssl_encode(algo, key, iv):
