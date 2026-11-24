@@ -1101,6 +1101,8 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(normalize_url('http://vimeo.com/56015672#at=0'), 'http://vimeo.com/56015672#at=0')
 
         self.assertEqual(normalize_url('http://www.example.com/../a/b/../c/./d.html'), 'http://www.example.com/a/c/d.html')
+        self.assertEqual(normalize_url('file:///..//dir/media/video.mp4'), 'file:///dir/media/video.mp4')
+        self.assertEqual(normalize_url('file:////server/share/dir/../video.mp4'), 'file:////server/share/video.mp4')
 
     def test_remove_dot_segments(self):
         self.assertEqual(remove_dot_segments('/a/b/c/./../../g'), '/a/g')
@@ -1108,6 +1110,8 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(remove_dot_segments('/ad/../cd'), '/cd')
         self.assertEqual(remove_dot_segments('/ad/../cd/'), '/cd/')
         self.assertEqual(remove_dot_segments('/..'), '/')
+        self.assertEqual(remove_dot_segments('/../'), '/')
+        self.assertEqual(remove_dot_segments('/..//a'), '//a')
         self.assertEqual(remove_dot_segments('/./'), '/')
         self.assertEqual(remove_dot_segments('/./a'), '/a')
         self.assertEqual(remove_dot_segments('/abc/./.././d/././e/.././f/./../../ghi'), '/ghi')
@@ -1117,6 +1121,8 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(remove_dot_segments(''), '')
         self.assertEqual(remove_dot_segments('/../a/b/c'), '/a/b/c')
         self.assertEqual(remove_dot_segments('../a'), 'a')
+        self.assertEqual(remove_dot_segments('a/..'), '/')
+        self.assertEqual(remove_dot_segments('a/../b'), '/b')
         self.assertEqual(remove_dot_segments('./a'), 'a')
         self.assertEqual(remove_dot_segments('.'), '')
         self.assertEqual(remove_dot_segments('////'), '////')
