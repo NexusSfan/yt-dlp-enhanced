@@ -13,7 +13,7 @@
 </div>
 <!-- MANPAGE: END EXCLUDED SECTION -->
 
-yt-dlp is a feature-rich command-line audio/video downloader with support for [thousands of sites](supportedsites.md). The project is a fork of [youtube-dl](https://github.com/ytdl-org/youtube-dl) based on the now inactive [youtube-dlc](https://github.com/blackjack4494/yt-dlc).
+yt-dlp-enhanced is a feature-rich command-line audio/video downloader with support for [thousands of sites](supportedsites.md). While it tracks the upstream yt-dlp project, it has additional features and fixes that yt-dlp maintainers unfortunately rejected for non-technical reasons, so this enhanced version should be faster and more reliable than the original.
 
 <!-- MANPAGE: MOVE "USAGE AND OPTIONS" SECTION HERE -->
 

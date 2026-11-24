@@ -130,12 +130,12 @@ def windows_set_version(exe, version):
         kids=[
             StringFileInfo([StringTable('040904B0', [
                 StringStruct('Comments', f'yt-dlp{suffix} Command Line Interface'),
-                StringStruct('CompanyName', 'https://github.com/yt-dlp'),
+                StringStruct('CompanyName', 'https://github.com/jbruchon/yt-dlp-enhanced'),
                 StringStruct('FileDescription', 'yt-dlp%s' % (MACHINE and f' ({MACHINE})')),
                 StringStruct('FileVersion', version),
                 StringStruct('InternalName', f'yt-dlp{suffix}'),
                 StringStruct('OriginalFilename', f'yt-dlp{suffix}.exe'),
-                StringStruct('ProductName', f'yt-dlp{suffix}'),
+                StringStruct('ProductName', 'yt-dlp-enhanced'),
                 StringStruct(
                     'ProductVersion', f'{version}{suffix} on Python {platform.python_version()}'),
             ])]), VarFileInfo([VarStruct('Translation', [0, 1200])]),
