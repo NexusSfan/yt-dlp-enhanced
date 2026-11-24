@@ -1,25 +1,33 @@
-#!/usr/bin/env python
-from __future__ import unicode_literals
+#!/usr/bin/env python3
 
+# Allow direct execution
 import os
-from os.path import dirname as dirn
 import sys
 
-sys.path.insert(0, dirn(dirn((os.path.abspath(__file__)))))
-import youtube_dlc
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-ZSH_COMPLETION_FILE = "youtube-dlc.zsh"
-ZSH_COMPLETION_TEMPLATE = "devscripts/zsh-completion.in"
+
+import yt_dlp
+
+ZSH_COMPLETION_FILE = 'completions/zsh/_yt-dlp'
+ZSH_COMPLETION_TEMPLATE = 'devscripts/zsh-completion.in'
 
 
 def build_completion(opt_parser):
     opts = [opt for group in opt_parser.option_groups
             for opt in group.option_list]
-    opts_file = [opt for opt in opts if opt.metavar == "FILE"]
-    opts_dir = [opt for opt in opts if opt.metavar == "DIR"]
+    opts_file = [opt for opt in opts if opt.metavar == 'FILE']
+    opts_dir = [opt for opt in opts if opt.metavar == 'DIR']
+    opts_path = [opt for opt in opts if opt.metavar == 'PATH']
 
     fileopts = []
     for opt in opts_file:
+        if opt._short_opts:
+            fileopts.extend(opt._short_opts)
+        if opt._long_opts:
+            fileopts.extend(opt._long_opts)
+
+    for opt in opts_path:
         if opt._short_opts:
             fileopts.extend(opt._short_opts)
         if opt._long_opts:
@@ -37,13 +45,13 @@ def build_completion(opt_parser):
     with open(ZSH_COMPLETION_TEMPLATE) as f:
         template = f.read()
 
-    template = template.replace("{{fileopts}}", "|".join(fileopts))
-    template = template.replace("{{diropts}}", "|".join(diropts))
-    template = template.replace("{{flags}}", " ".join(flags))
+    template = template.replace('{{fileopts}}', '|'.join(fileopts))
+    template = template.replace('{{diropts}}', '|'.join(diropts))
+    template = template.replace('{{flags}}', ' '.join(flags))
 
-    with open(ZSH_COMPLETION_FILE, "w") as f:
+    with open(ZSH_COMPLETION_FILE, 'w') as f:
         f.write(template)
 
 
-parser = youtube_dlc.parseOpts()[0]
+parser = yt_dlp.parseOpts(ignore_config_files=True)[0]
 build_completion(parser)

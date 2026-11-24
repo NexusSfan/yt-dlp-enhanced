@@ -1,4 +1,4 @@
-__youtube_dlc()
+__yt_dlp()
 {
     local cur prev opts fileopts diropts keywords
     COMPREPLY=()
@@ -6,13 +6,17 @@ __youtube_dlc()
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     opts="{{flags}}"
     keywords=":ytfavorites :ytrecommended :ytsubscriptions :ytwatchlater :ythistory"
-    fileopts="-a|--batch-file|--download-archive|--cookies|--load-info"
+    fileopts="-a|--batch-file|--download-archive|--cookies|--load-info-json"
     diropts="--cache-dir"
 
     if [[ ${prev} =~ ${fileopts} ]]; then
+        local IFS=$'\n'
+        type compopt &>/dev/null && compopt -o filenames
         COMPREPLY=( $(compgen -f -- ${cur}) )
         return 0
     elif [[ ${prev} =~ ${diropts} ]]; then
+        local IFS=$'\n'
+        type compopt &>/dev/null && compopt -o dirnames
         COMPREPLY=( $(compgen -d -- ${cur}) )
         return 0
     fi
@@ -26,4 +30,4 @@ __youtube_dlc()
     fi
 }
 
-complete -F __youtube_dlc youtube-dlc
+complete -F __yt_dlp yt-dlp
