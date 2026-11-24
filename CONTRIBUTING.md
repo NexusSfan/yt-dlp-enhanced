@@ -1,8 +1,5 @@
 # CONTRIBUTING TO YT-DLP
 
-- [NO AI / NO LLM POLICY](#no-ai--no-llm-policy)
-- [NEW SITE SUPPORT POLICY](#new-site-support-policy)
-- [STUDENT PROJECT POLICY](#student-project-policy)
 - [OPENING AN ISSUE](#opening-an-issue)
     - [Is the description of the issue itself sufficient?](#is-the-description-of-the-issue-itself-sufficient)
     - [Are you using the latest version?](#are-you-using-the-latest-version)
@@ -34,7 +31,7 @@
 
 # OPENING AN ISSUE
 
-Bugs and suggestions should be reported at: [jbruchon/yt-dlp/issues](https://github.com/jbruchon/yt-dlp-enhanced/issues). You may also feel free to email jody (@) jody bruchon dot com directly.
+Bugs and suggestions should be reported at: [jbruchon/yt-dlp-enhanced/issues](https://github.com/jbruchon/yt-dlp-enhanced/issues). You may also feel free to email jody (@) jody bruchon dot com directly.
 
 **Please include the full output of yt-dlp when run with `-vU`**, i.e. **add** `-vU` flag to **your command line**, copy the **whole** output and post it in the issue body wrapped in \`\`\` for better formatting. It should look similar to this:
 ```

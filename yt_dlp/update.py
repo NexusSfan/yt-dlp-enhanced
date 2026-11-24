@@ -36,7 +36,7 @@ from .version import (
 )
 
 UPDATE_SOURCES = {
-    'stable': 'yt-dlp/yt-dlp',
+    'stable': 'jbruchon/yt-dlp-enhanced',
     'nightly': 'yt-dlp/yt-dlp-nightly-builds',
     'master': 'yt-dlp/yt-dlp-master-builds',
 }
