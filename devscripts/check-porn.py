@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
+from __future__ import unicode_literals
+
 """
 This script employs a VERY basic heuristic ('porn' in webpage.lower()) to check
 if we are not 'age_limit' tagging some porn site
@@ -10,14 +12,11 @@ pass the list filename as the only argument
 # Allow direct execution
 import os
 import sys
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-
-import urllib.parse
-import urllib.request
-
 from test.helper import gettestcases
+from youtube_dlc.utils import compat_urllib_parse_urlparse
+from youtube_dlc.utils import compat_urllib_request
 
 if len(sys.argv) > 1:
     METHOD = 'LIST'
@@ -28,9 +27,9 @@ else:
 for test in gettestcases():
     if METHOD == 'EURISTIC':
         try:
-            webpage = urllib.request.urlopen(test['url'], timeout=10).read()
+            webpage = compat_urllib_request.urlopen(test['url'], timeout=10).read()
         except Exception:
-            print('\nFail: {}'.format(test['name']))
+            print('\nFail: {0}'.format(test['name']))
             continue
 
         webpage = webpage.decode('utf8', 'replace')
@@ -38,9 +37,9 @@ for test in gettestcases():
         RESULT = 'porn' in webpage.lower()
 
     elif METHOD == 'LIST':
-        domain = urllib.parse.urlparse(test['url']).netloc
+        domain = compat_urllib_parse_urlparse(test['url']).netloc
         if not domain:
-            print('\nFail: {}'.format(test['name']))
+            print('\nFail: {0}'.format(test['name']))
             continue
         domain = '.'.join(domain.split('.')[-2:])
 
@@ -48,11 +47,11 @@ for test in gettestcases():
 
     if RESULT and ('info_dict' not in test or 'age_limit' not in test['info_dict']
                    or test['info_dict']['age_limit'] != 18):
-        print('\nPotential missing age_limit check: {}'.format(test['name']))
+        print('\nPotential missing age_limit check: {0}'.format(test['name']))
 
     elif not RESULT and ('info_dict' in test and 'age_limit' in test['info_dict']
                          and test['info_dict']['age_limit'] == 18):
-        print('\nPotential false negative: {}'.format(test['name']))
+        print('\nPotential false negative: {0}'.format(test['name']))
 
     else:
         sys.stdout.write('.')

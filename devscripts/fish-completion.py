@@ -1,18 +1,16 @@
-#!/usr/bin/env python3
-
-# Allow direct execution
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+#!/usr/bin/env python
+from __future__ import unicode_literals
 
 import optparse
+import os
+from os.path import dirname as dirn
+import sys
 
-import yt_dlp
-from yt_dlp.utils import shell_quote
+sys.path.insert(0, dirn(dirn((os.path.abspath(__file__)))))
+import youtube_dlc
+from youtube_dlc.utils import shell_quote
 
-FISH_COMPLETION_FILE = 'completions/fish/yt-dlp.fish'
+FISH_COMPLETION_FILE = 'youtube-dlc.fish'
 FISH_COMPLETION_TEMPLATE = 'devscripts/fish-completion.in'
 
 EXTRA_ARGS = {
@@ -33,7 +31,7 @@ def build_completion(opt_parser):
     for group in opt_parser.option_groups:
         for option in group.option_list:
             long_option = option.get_opt_string().strip('-')
-            complete_cmd = ['complete', '--command', 'yt-dlp', '--long-option', long_option]
+            complete_cmd = ['complete', '--command', 'youtube-dlc', '--long-option', long_option]
             if option._short_opts:
                 complete_cmd += ['--short-option', option._short_opts[0].strip('-')]
             if option.help != optparse.SUPPRESS_HELP:
@@ -48,5 +46,5 @@ def build_completion(opt_parser):
         f.write(filled_template)
 
 
-parser = yt_dlp.parseOpts(ignore_config_files=True)[0]
+parser = youtube_dlc.parseOpts()[0]
 build_completion(parser)

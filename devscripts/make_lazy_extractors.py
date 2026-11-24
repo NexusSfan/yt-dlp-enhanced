@@ -1,115 +1,100 @@
-#!/usr/bin/env python3
-
-# Allow direct execution
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+from __future__ import unicode_literals, print_function
 
 from inspect import getsource
+import io
+import os
+from os.path import dirname as dirn
+import sys
 
-from devscripts.utils import get_filename_args, read_file, write_file
-from yt_dlp.extractor import import_extractors
-from yt_dlp.extractor.common import InfoExtractor, SearchInfoExtractor
-from yt_dlp.globals import extractors
+print('WARNING: Lazy loading extractors is an experimental feature that may not always work', file=sys.stderr)
 
-NO_ATTR = object()
-STATIC_CLASS_PROPERTIES = [
-    'IE_NAME', '_ENABLED', '_VALID_URL',  # Used for URL matching
-    '_WORKING', 'IE_DESC', '_NETRC_MACHINE', 'SEARCH_KEY',  # Used for --extractor-descriptions
-    'age_limit',  # Used for --age-limit (evaluated)
-    '_RETURN_TYPE',  # Accessed in CLI only with instance (evaluated)
-]
-CLASS_METHODS = [
-    'ie_key', 'suitable', '_match_valid_url',  # Used for URL matching
-    'working', 'get_temp_id', '_match_id',  # Accessed just before instance creation
-    'description',  # Used for --extractor-descriptions
-    'is_suitable',  # Used for --age-limit
-    'supports_login', 'is_single_video',  # Accessed in CLI only with instance
-]
-IE_TEMPLATE = '''
+sys.path.insert(0, dirn(dirn((os.path.abspath(__file__)))))
+
+lazy_extractors_filename = sys.argv[1]
+if os.path.exists(lazy_extractors_filename):
+    os.remove(lazy_extractors_filename)
+
+from youtube_dlc.extractor import _ALL_CLASSES
+from youtube_dlc.extractor.common import InfoExtractor, SearchInfoExtractor
+
+with open('devscripts/lazy_load_template.py', 'rt') as f:
+    module_template = f.read()
+
+module_contents = [
+    module_template + '\n' + getsource(InfoExtractor.suitable) + '\n',
+    'class LazyLoadSearchExtractor(LazyLoadExtractor):\n    pass\n']
+
+ie_template = '''
 class {name}({bases}):
-    _module = {module!r}
+    _VALID_URL = {valid_url!r}
+    _module = '{module}'
 '''
-MODULE_TEMPLATE = read_file('devscripts/lazy_load_template.py')
+
+make_valid_template = '''
+    @classmethod
+    def _make_valid_url(cls):
+        return {valid_url!r}
+'''
 
 
-def main():
-    os.environ['YTDLP_NO_PLUGINS'] = 'true'
-    os.environ['YTDLP_NO_LAZY_EXTRACTORS'] = 'true'
-
-    lazy_extractors_filename = get_filename_args(default_outfile='yt_dlp/extractor/lazy_extractors.py')
-
-    import_extractors()
-
-    DummyInfoExtractor = type('InfoExtractor', (InfoExtractor,), {'IE_NAME': NO_ATTR})
-    module_src = '\n'.join((
-        MODULE_TEMPLATE,
-        '    _module = None',
-        *extra_ie_code(DummyInfoExtractor),
-        '\nclass LazyLoadSearchExtractor(LazyLoadExtractor):\n    pass\n',
-        *build_ies(list(extractors.value.values()), (InfoExtractor, SearchInfoExtractor), DummyInfoExtractor),
-    ))
-
-    write_file(lazy_extractors_filename, f'{module_src}\n')
+def get_base_name(base):
+    if base is InfoExtractor:
+        return 'LazyLoadExtractor'
+    elif base is SearchInfoExtractor:
+        return 'LazyLoadSearchExtractor'
+    else:
+        return base.__name__
 
 
-def extra_ie_code(ie, base=None):
-    for var in STATIC_CLASS_PROPERTIES:
-        val = getattr(ie, var)
-        if val != (getattr(base, var) if base else NO_ATTR):
-            yield f'    {var} = {val!r}'
-    yield ''
-
-    for name in CLASS_METHODS:
-        f = getattr(ie, name)
-        if not base or f.__func__ != getattr(base, name).__func__:
-            yield getsource(f)
-
-
-def build_ies(ies, bases, attr_base):
-    names = []
-    for ie in sort_ies(ies, bases):
-        yield build_lazy_ie(ie, ie.__name__, attr_base)
-        if ie in ies:
-            names.append(ie.__name__)
-
-    yield '\n_CLASS_LOOKUP = {%s}' % ', '.join(f'{name!r}: {name}' for name in names)
+def build_lazy_ie(ie, name):
+    valid_url = getattr(ie, '_VALID_URL', None)
+    s = ie_template.format(
+        name=name,
+        bases=', '.join(map(get_base_name, ie.__bases__)),
+        valid_url=valid_url,
+        module=ie.__module__)
+    if ie.suitable.__func__ is not InfoExtractor.suitable.__func__:
+        s += '\n' + getsource(ie.suitable)
+    if hasattr(ie, '_make_valid_url'):
+        # search extractors
+        s += make_valid_template.format(valid_url=ie._make_valid_url())
+    return s
 
 
-def sort_ies(ies, ignored_bases):
-    """find the correct sorting and add the required base classes so that subclasses can be correctly created"""
-    classes, returned_classes = ies[:-1], set()
-    assert ies[-1].__name__ == 'GenericIE', 'Last IE must be GenericIE'
-    while classes:
-        for c in classes[:]:
-            bases = set(c.__bases__) - {object, *ignored_bases}
-            restart = False
-            for b in sorted(bases, key=lambda x: x.__name__):
-                if b not in classes and b not in returned_classes:
-                    assert b.__name__ != 'GenericIE', 'Cannot inherit from GenericIE'
-                    classes.insert(0, b)
-                    restart = True
-            if restart:
-                break
-            if bases <= returned_classes:
-                yield c
-                returned_classes.add(c)
-                classes.remove(c)
-                break
-    yield ies[-1]
+# find the correct sorting and add the required base classes so that sublcasses
+# can be correctly created
+classes = _ALL_CLASSES[:-1]
+ordered_cls = []
+while classes:
+    for c in classes[:]:
+        bases = set(c.__bases__) - set((object, InfoExtractor, SearchInfoExtractor))
+        stop = False
+        for b in bases:
+            if b not in classes and b not in ordered_cls:
+                if b.__name__ == 'GenericIE':
+                    exit()
+                classes.insert(0, b)
+                stop = True
+        if stop:
+            break
+        if all(b in ordered_cls for b in bases):
+            ordered_cls.append(c)
+            classes.remove(c)
+            break
+ordered_cls.append(_ALL_CLASSES[-1])
 
+names = []
+for ie in ordered_cls:
+    name = ie.__name__
+    src = build_lazy_ie(ie, name)
+    module_contents.append(src)
+    if ie in _ALL_CLASSES:
+        names.append(name)
 
-def build_lazy_ie(ie, name, attr_base):
-    bases = ', '.join({
-        'InfoExtractor': 'LazyLoadExtractor',
-        'SearchInfoExtractor': 'LazyLoadSearchExtractor',
-    }.get(base.__name__, base.__name__) for base in ie.__bases__)
+module_contents.append(
+    '_ALL_CLASSES = [{0}]'.format(', '.join(names)))
 
-    s = IE_TEMPLATE.format(name=name, module=ie.__module__, bases=bases)
-    return s + '\n'.join(extra_ie_code(ie, attr_base))
+module_src = '\n'.join(module_contents) + '\n'
 
-
-if __name__ == '__main__':
-    main()
+with io.open(lazy_extractors_filename, 'wt', encoding='utf-8') as f:
+    f.write(module_src)
