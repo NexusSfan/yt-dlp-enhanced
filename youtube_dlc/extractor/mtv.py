@@ -7,6 +7,7 @@ from .common import InfoExtractor
 from ..compat import (
     compat_str,
     compat_xpath,
+    compat_urlparse,
 )
 from ..utils import (
     ExtractorError,
@@ -22,6 +23,7 @@ from ..utils import (
     unescapeHTML,
     update_url_query,
     url_basename,
+    get_domain,
     xpath_text,
 )
 
@@ -43,7 +45,7 @@ class MTVServicesInfoExtractor(InfoExtractor):
         # Remove the templates, like &device={device}
         return re.sub(r'&[^=]*?={.*?}(?=(&|$))', '', url)
 
-    def _get_feed_url(self, uri):
+    def _get_feed_url(self, uri, url=None):
         return self._FEED_URL
 
     def _get_thumbnail_url(self, uri, itemdoc):
@@ -209,9 +211,9 @@ class MTVServicesInfoExtractor(InfoExtractor):
             data['lang'] = self._LANG
         return data
 
-    def _get_videos_info(self, uri, use_hls=True):
+    def _get_videos_info(self, uri, use_hls=True, url=None):
         video_id = self._id_from_uri(uri)
-        feed_url = self._get_feed_url(uri)
+        feed_url = self._get_feed_url(uri, url)
         info_url = update_url_query(feed_url, self._get_feed_query(uri))
         return self._get_videos_info_from_url(info_url, video_id, use_hls)
 
@@ -253,7 +255,41 @@ class MTVServicesInfoExtractor(InfoExtractor):
 
         return try_get(feed, lambda x: x['result']['data']['id'], compat_str)
 
-    def _extract_mgid(self, webpage):
+    def _extract_new_triforce_mgid(self, webpage, url='', video_id=None):
+        if url == '':
+            return
+        domain = get_domain(url)
+        if domain is None:
+            raise ExtractorError(
+                '[%s] could not get domain' % self.IE_NAME,
+                expected=True)
+        url = url.replace("https://", "http://")
+        enc_url = compat_urlparse.quote(url, safe='')
+        _TRIFORCE_V8_TEMPLATE = 'https://%s/feeds/triforce/manifest/v8?url=%s'
+        triforce_manifest_url = _TRIFORCE_V8_TEMPLATE % (domain, enc_url)
+
+        manifest = self._download_json(triforce_manifest_url, video_id, fatal=False)
+        if manifest:
+            if manifest.get('manifest').get('type') == 'redirect':
+                self.to_screen('Found a redirect. Downloading manifest from new location')
+                new_loc = manifest.get('manifest').get('newLocation')
+                new_loc = new_loc.replace("https://", "http://")
+                enc_new_loc = compat_urlparse.quote(new_loc, safe='')
+                triforce_manifest_new_loc = _TRIFORCE_V8_TEMPLATE % (domain, enc_new_loc)
+                manifest = self._download_json(triforce_manifest_new_loc, video_id, fatal=False)
+
+        item_id = try_get(manifest, lambda x: x['manifest']['reporting']['itemId'], compat_str)
+        if not item_id:
+            self.to_screen('No id found!')
+            return
+
+        # 'episode' can be anything. 'content' is used often as well
+        _MGID_TEMPLATE = 'mgid:arc:episode:%s:%s'
+        mgid = _MGID_TEMPLATE % (domain, item_id)
+
+        return mgid
+
+    def _extract_mgid(self, webpage, url, title=None, data_zone=None):
         try:
             # the url can be http://media.mtvnservices.com/fb/{mgid}.swf
             # or http://media.mtvnservices.com/{mgid}
@@ -263,6 +299,21 @@ class MTVServicesInfoExtractor(InfoExtractor):
                 mgid = mgid[:-4]
         except RegexNotFoundError:
             mgid = None
+
+        if not title:
+            title = url_basename(url)
+
+        try:
+            window_data = self._parse_json(self._search_regex(
+                r'(?s)window.__DATA__ = (?P<json>{.+});', webpage,
+                'JSON Window Data', default=None, fatal=False, group='json'), title, fatal=False)
+            main_container = None
+            for i in range(len(window_data['children'])):
+                if window_data['children'][i]['type'] == 'MainContainer':
+                    main_container = window_data['children'][i]
+            mgid = main_container['children'][0]['props']['media']['video']['config']['uri']
+        except (KeyError, IndexError, TypeError):
+            pass
 
         if mgid is None or ':' not in mgid:
             mgid = self._search_regex(
@@ -276,15 +327,18 @@ class MTVServicesInfoExtractor(InfoExtractor):
                 r'embed/(mgid:.+?)["\'&?/]', sm4_embed, 'mgid', default=None)
 
         if not mgid:
-            mgid = self._extract_triforce_mgid(webpage)
+            mgid = self._extract_new_triforce_mgid(webpage, url)
+
+        if not mgid:
+            mgid = self._extract_triforce_mgid(webpage, data_zone)
 
         return mgid
 
     def _real_extract(self, url):
         title = url_basename(url)
         webpage = self._download_webpage(url, title)
-        mgid = self._extract_mgid(webpage)
-        videos_info = self._get_videos_info(mgid)
+        mgid = self._extract_mgid(webpage, url, title=title)
+        videos_info = self._get_videos_info(mgid, url=url)
         return videos_info
 
 
@@ -348,6 +402,18 @@ class MTVIE(MTVServicesInfoExtractor):
         'url': 'http://www.mtv.com/episodes/g8xu7q/teen-mom-2-breaking-the-wall-season-7-ep-713',
         'only_matching': True,
     }]
+
+    @staticmethod
+    def extract_child_with_type(parent, t):
+        children = parent['children']
+        return next(c for c in children if c.get('type') == t)
+
+    def _extract_mgid(self, webpage):
+        data = self._parse_json(self._search_regex(
+            r'__DATA__\s*=\s*({.+?});', webpage, 'data'), None)
+        main_container = self.extract_child_with_type(data, 'MainContainer')
+        video_player = self.extract_child_with_type(main_container, 'VideoPlayer')
+        return video_player['props']['media']['video']['config']['uri']
 
 
 class MTVJapanIE(MTVServicesInfoExtractor):
