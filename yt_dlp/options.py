@@ -169,7 +169,7 @@ class _YoutubeDLOptionParser(optparse.OptionParser):
             prog='yt-dlp' if detect_variant() == 'source' else None,
             version=__version__,
             usage='%prog [OPTIONS] URL [URL...]',
-            epilog='See full documentation at  https://github.com/yt-dlp/yt-dlp#readme',
+            epilog='See full documentation at  https://github.com/jbruchon/yt-dlp-enhanced#readme',
             formatter=_YoutubeDLHelpFormatter(),
             conflict_handler='resolve',
         )
