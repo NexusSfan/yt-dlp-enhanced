@@ -27,15 +27,25 @@ def partition(nodeids, workers):
     return [sorted(shard) for shard in shards]
 
 
+def assigned_modules(nodeids, source_paths):
+    """Only collect modules present in the immutable source generation."""
+    modules = sorted({nodeid.split('::', 1)[0] for nodeid in nodeids})
+    if not modules or any(module not in source_paths or not module.endswith('.py') for module in modules):
+        raise ValueError('unrecognised test module in assignment')
+    return modules
+
+
 def verify_receipts(expected, receipts, *, source_digest=None):
     if len(expected) != len(receipts):
         raise ValueError('missing or extra shard receipts')
-    full = sorted(nodeid for ids in expected for nodeid in ids)
+    full = [nodeid for ids in expected for nodeid in ids]
+    if not full or len(set(full)) != len(full):
+        raise ValueError('empty or overlapping shard assignments')
     for ids, receipt in zip(expected, receipts, strict=True):
         if source_digest is not None and receipt.get('source_sha256') != source_digest:
             raise ValueError('source manifest mismatch')
-        if receipt.get('exitstatus') != 0 or sorted(receipt.get('full_collection', [])) != full:
-            raise ValueError('full collection or exit status mismatch')
+        if receipt.get('exitstatus') != 0 or sorted(receipt.get('full_collection', [])) != sorted(ids):
+            raise ValueError('assigned module collection or exit status mismatch')
         if sorted(receipt['collected']) != sorted(ids):
             raise ValueError('collection mismatch')
         subtests = receipt.get('subtests', {})
@@ -83,6 +93,7 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
             pristine = temp / 'source'
             manifest = materialize_commit(root, head, pristine)
             source_digest = manifest_digest(manifest)
+            source_paths = {entry[0] for entry in manifest}
             verify_snapshot(pristine, manifest)
 
             def snapshot(name):
@@ -103,11 +114,16 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
                 env.pop('PYTHONPATH', None)
                 command = [sys.executable, '-m', 'pytest', *args]
                 if assigned is None:
-                    command.append('--collect-only')
-                proc = subprocess.run(command, cwd=checkout, env=env, timeout=900)
-                if proc.returncode:
-                    raise ValueError(f'{name}: pytest exit {proc.returncode}')
-                return json.loads(result.read_text(encoding='utf-8'))
+                    command.extend(('--collect-only', '-q'))
+                else:
+                    command.extend(['--', *assigned_modules(assigned, source_paths)])
+                try:
+                    proc = subprocess.run(command, cwd=checkout, env=env, timeout=900)
+                    if proc.returncode:
+                        raise ValueError(f'{name}: pytest exit {proc.returncode}')
+                    return json.loads(result.read_text(encoding='utf-8'))
+                finally:
+                    shutil.rmtree(checkout)
 
             collection = invoke('collection')
             if collection.get('source_sha256') != source_digest or collection.get('exitstatus') != 0:
@@ -121,8 +137,10 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
                 raise ValueError('checkout changed during execution')
             summary = {'head': head, 'source_sha256': source_digest, 'workers': len(shards), 'tests': len(baseline),
                        'collection_sha256': hashlib.sha256(json.dumps(sorted(baseline)).encode()).hexdigest(),
-                       'elapsed_seconds': round(time.monotonic() - started, 3), 'shard_sizes': list(map(len, shards))}
-            print('OPT verified receipt: ' + json.dumps(summary, sort_keys=True), flush=True)
+                       'elapsed_seconds': round(time.monotonic() - started, 3), 'shard_sizes': list(map(len, shards)),
+                       'module_counts': [len(assigned_modules(ids, source_paths)) for ids in shards],
+                       'outcome_parity_verified': False}
+            print('OPT source/coverage receipt: ' + json.dumps(summary, sort_keys=True), flush=True)
             return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print(f'OPT failed: {error}', file=sys.stderr)
@@ -152,12 +170,10 @@ def pytest_collection_finish(session):
         return
     _full_collection.extend(item.nodeid for item in session.items)
     assigned = _spec['assigned']
-    if assigned is not None:
-        selected = set(assigned)
-        removed = [item for item in session.items if item.nodeid not in selected]
-        session.items[:] = [item for item in session.items if item.nodeid in selected]
-        session.config.hook.pytest_deselected(items=removed)
-        session.testscollected = len(session.items)
+    if assigned is not None and sorted(_full_collection) != sorted(assigned):
+        import pytest
+
+        pytest.exit('OPT assigned module collection differs from coordinator manifest', returncode=2)
 
 
 def pytest_runtest_logreport(report):

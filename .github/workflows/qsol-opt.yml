@@ -14,6 +14,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: qsol-opt-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   opt-candidate:
     runs-on: ubuntu-latest
@@ -31,7 +35,7 @@ jobs:
           python -m pip install --require-hashes -r bundle/requirements/test.txt
           python -m pip install --require-hashes -r bundle/requirements/curl-cffi.txt
       - name: Regression guards
-        run: python -m pytest -Werror test/test_opt_shards.py test/test_qsol_cookie_config.py test/test_qsol_sync.py
+        run: python -m pytest -Werror test/test_opt_shards.py test/test_opt_source.py test/test_qsol_cookie_config.py test/test_qsol_sync.py
       - name: Serial reference without retries
         run: time python -m devscripts.run_tests core
       - name: Seven-worker candidate

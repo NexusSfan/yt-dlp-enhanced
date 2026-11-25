@@ -3,7 +3,6 @@ import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import subprocess
 
 
@@ -17,7 +16,7 @@ def materialize_commit(root, head, destination):
         ['git', 'rev-parse', '--show-object-format'], cwd=root, text=True).strip()
     if object_format not in ('sha1', 'sha256'):
         raise ValueError(f'unsupported Git object format: {object_format}')
-    listing = subprocess.check_output(['git', 'ls-tree', '-rlz', '--full-tree', head], cwd=root)
+    listing = subprocess.check_output(['git', '--no-replace-objects', 'ls-tree', '-rlz', '--full-tree', head], cwd=root)
     entries = []
     for record in listing.split(b'\0'):
         if not record:
@@ -33,7 +32,7 @@ def materialize_commit(root, head, destination):
     if not entries or sum(size for _, _, _, size in entries) > MAX_SOURCE_BYTES:
         raise ValueError('empty or oversized source generation')
     batch = subprocess.check_output(
-        ['git', 'cat-file', '--batch'], cwd=root,
+        ['git', '--no-replace-objects', 'cat-file', '--batch'], cwd=root,
         input=''.join(f'{oid}\n' for _, _, oid, _ in entries).encode('ascii'))
     stream = io.BytesIO(batch)
     destination.mkdir()
