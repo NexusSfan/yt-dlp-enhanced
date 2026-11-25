@@ -1,5 +1,6 @@
 """Bounded local subprocess execution for trusted developer diagnostics."""
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -15,10 +16,8 @@ def run_process(command, *, timeout, input=None, capture_output=False, check=Fal
             stdout, stderr = process.communicate(input, timeout=timeout)
         except BaseException:
             if os.name == 'posix':
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
             else:
                 process.kill()
             # Do not wait for escaped descendants holding inherited pipes.

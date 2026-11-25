@@ -15,7 +15,7 @@ from devscripts.run_tests import parse_args
 def make_receipt(ids, *, outcome='passed', reason=None, xfail=None, digest=None):
     phases = [['setup', 'passed'], ['call', outcome], ['teardown', 'passed']]
     return {'schema': 1, 'collected': ids, 'full_collection': ids, 'exitstatus': 0,
-            'source_sha256': digest, 'environment_sha256': 'b' * 64, 'reports': {nodeid: phases for nodeid in ids}, 'subtests': {},
+            'source_sha256': digest, 'environment_sha256': 'b' * 64, 'reports': dict.fromkeys(ids, phases), 'subtests': {},
             'outcomes': {nodeid: [['parent', phase, result, reason if phase == 'call' else None,
                                    xfail if phase == 'call' else None, None] for phase, result in phases]
                          for nodeid in ids}}
