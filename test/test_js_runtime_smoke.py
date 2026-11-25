@@ -25,7 +25,7 @@ class TestJsRuntimeSmoke(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'bun'
             path.write_bytes(b'fixture executable')
-            with patch('devscripts.js_runtime_smoke.subprocess.run') as run:
+            with patch('devscripts.js_runtime_smoke.run_process') as run:
                 run.side_effect = [
                     subprocess.CompletedProcess([], 0, '1.4.5\n', ''),
                     subprocess.CompletedProcess([], 0, json.dumps(EXPECTED), ''),
@@ -45,7 +45,7 @@ class TestJsRuntimeSmoke(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'bun'
             path.write_bytes(b'fixture executable')
-            with patch('devscripts.js_runtime_smoke.subprocess.run',
+            with patch('devscripts.js_runtime_smoke.run_process',
                        side_effect=subprocess.TimeoutExpired(['bun'], 10)):
                 with self.assertRaises(subprocess.TimeoutExpired):
                     run_smoke(path, 1)

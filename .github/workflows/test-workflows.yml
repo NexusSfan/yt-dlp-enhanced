@@ -97,7 +97,7 @@ jobs:
           cd "$directory"
           gh release download "$ZIZMOR_VERSION" --repo zizmorcore/zizmor --pattern "$archive"
           printf '%s  %s\n' "$ZIZMOR_SHA256" "$archive" | sha256sum -c -
-          member=$(tar -tzf "$archive" | grep -E '(^|/)zizmor)
+          member=$(tar -tzf "$archive" | grep -E '(^|/)zizmor$')
           tar -xOzf "$archive" "$member" > zizmor
           chmod 755 zizmor
           printf '%s\n' "$directory" >> "$GITHUB_PATH"

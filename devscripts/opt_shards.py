@@ -2,29 +2,40 @@
 import collections
 import concurrent.futures
 import hashlib
+import importlib.metadata
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
+from devscripts.process_lifecycle import run_process
 from devscripts.strict_json import loads
 from devscripts.opt_source import manifest_digest, materialize_commit, verify_snapshot
 
 
-def partition(nodeids, workers):
+def partition(nodeids, workers, *, module_costs=None):
     """Keep each test module together; greedily balance by collected test count."""
     if not 1 <= workers <= 32 or not nodeids or len(set(nodeids)) != len(nodeids):
         raise ValueError('invalid worker count or empty/duplicate collection')
     groups = collections.defaultdict(list)
     for nodeid in sorted(nodeids):
         groups[nodeid.split('::', 1)[0]].append(nodeid)
+    if module_costs is None:
+        module_costs = {module: len(ids) for module, ids in groups.items()}
+    if (set(module_costs) != set(groups) or any(type(cost) is not int or not 1 <= cost <= 10**15 for cost in module_costs.values())):
+        raise ValueError('invalid experimental module costs')
     shards = [[] for _ in range(min(workers, len(groups)))]
-    for _, ids in sorted(groups.items(), key=lambda item: (-len(item[1]), item[0])):
-        min(shards, key=len).extend(ids)
+    loads = [0] * len(shards)
+    for module, ids in sorted(groups.items(), key=lambda item: (-module_costs[item[0]], item[0])):
+        index = min(range(len(shards)), key=lambda i: (loads[i], i))
+        shards[index].extend(ids)
+        loads[index] += module_costs[module]
     return [sorted(shard) for shard in shards]
 
 
@@ -38,14 +49,17 @@ def assigned_modules(nodeids, source_paths):
 
 def validate_receipt(receipt, *, executed=True):
     fields = {'schema', 'collected', 'full_collection', 'exitstatus', 'source_sha256',
-              'reports', 'subtests', 'outcomes'}
+              'reports', 'subtests', 'outcomes', 'environment_sha256'}
     if not isinstance(receipt, dict) or set(receipt) != fields or type(receipt['schema']) is not int or receipt['schema'] != 1:
         raise ValueError('invalid receipt schema')
     if type(receipt['exitstatus']) is not int or receipt['exitstatus'] != 0:
         raise ValueError('invalid receipt exit status')
-    digest = receipt['source_sha256']
-    if digest is not None and (not isinstance(digest, str) or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest)):
-        raise ValueError('invalid source digest')
+    for field in ('source_sha256', 'environment_sha256'):
+        digest = receipt[field]
+        if field == 'source_sha256' and digest is None:
+            continue
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
+            raise ValueError(f'invalid {field}')
     for field in ('collected', 'full_collection'):
         ids = receipt[field]
         if not isinstance(ids, list) or any(not isinstance(nodeid, str) or not nodeid for nodeid in ids) or len(set(ids)) != len(ids):
@@ -102,7 +116,7 @@ def validate_receipt(receipt, *, executed=True):
             raise ValueError(f'inconsistent outcome details: {nodeid}')
 
 
-def verify_receipts(expected, receipts, *, source_digest=None):
+def verify_receipts(expected, receipts, *, source_digest=None, environment_digest=None):
     if len(expected) != len(receipts):
         raise ValueError('missing or extra shard receipts')
     full = [nodeid for ids in expected for nodeid in ids]
@@ -112,6 +126,8 @@ def verify_receipts(expected, receipts, *, source_digest=None):
         validate_receipt(receipt)
         if source_digest is not None and receipt['source_sha256'] != source_digest:
             raise ValueError('source manifest mismatch')
+        if environment_digest is not None and receipt['environment_sha256'] != environment_digest:
+            raise ValueError('execution environment mismatch')
         if sorted(receipt['collected']) != sorted(ids):
             raise ValueError('collection mismatch')
 
@@ -129,6 +145,8 @@ def outcome_ledger(receipts):
 
 def verify_outcome_parity(reference, receipts):
     """Compare observed identities, phases, outcomes, reasons and subtest order."""
+    if any(receipt['environment_sha256'] != reference['environment_sha256'] for receipt in receipts):
+        raise ValueError('serial/parallel environment mismatch')
     expected = outcome_ledger([reference])
     actual = outcome_ledger(receipts)
     if expected.keys() != actual.keys():
@@ -157,6 +175,8 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
     if not (flaky or (flaky is None and not ci)):
         args.append('--disallow-flaky')
     started = time.monotonic()
+    attempts = []
+    attempt_lock = threading.Lock()
     try:
         with tempfile.TemporaryDirectory(prefix='yt-dlp-opt-') as tmp:
             temp = Path(tmp)
@@ -173,8 +193,7 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
                 verify_snapshot(dest, manifest)
                 return dest
 
-            def invoke(name, assigned=None, *, collect_only=False):
-                invocation_started = time.monotonic()
+            def invoke_inner(name, assigned=None, *, collect_only=False):
                 checkout = snapshot(name)
                 spec = temp / f'{name}.json'
                 result = temp / f'{name}-receipt.json'
@@ -190,13 +209,26 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
                 elif assigned is not None:
                     command.extend(['--', *assigned_modules(assigned, source_paths)])
                 try:
-                    proc = subprocess.run(command, cwd=checkout, env=env, timeout=900)
+                    proc = run_process(command, cwd=checkout, env=env, timeout=900)
                     if proc.returncode:
                         raise ValueError(f'{name}: pytest exit {proc.returncode}')
                     receipt = loads(result.read_text(encoding='utf-8'))
                 finally:
                     shutil.rmtree(checkout)
-                return receipt, round(time.monotonic() - invocation_started, 3)
+                return receipt
+
+            def invoke(name, assigned=None, *, collect_only=False):
+                invocation_started = time.monotonic()
+                status = 'failed'
+                try:
+                    receipt = invoke_inner(name, assigned, collect_only=collect_only)
+                    validate_receipt(receipt, executed=not collect_only)
+                    status = 'completed'
+                    return receipt, round(time.monotonic() - invocation_started, 3)
+                finally:
+                    with attempt_lock:
+                        attempts.append({'name': name, 'status': status,
+                                         'elapsed_seconds': round(time.monotonic() - invocation_started, 3)})
 
             # A full serial oracle already supplies the coordinator's manifest.
             # Do not pay for a separate global collection in verification mode.
@@ -211,7 +243,8 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
             parallel_started = time.monotonic()
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(shards)) as pool:
                 receipts = [receipt for receipt, _ in pool.map(lambda pair: invoke(f'shard-{pair[0]}', pair[1]), enumerate(shards))]
-            verify_receipts(shards, receipts, source_digest=source_digest)
+            verify_receipts(shards, receipts, source_digest=source_digest,
+                            environment_digest=collection['environment_sha256'])
             parallel_elapsed = round(time.monotonic() - parallel_started, 3)
             outcome_digest = verify_outcome_parity(collection, receipts) if verify else None
             if subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, cwd=root).strip() != head or subprocess.check_output(['git', 'status', '--porcelain'], cwd=root).strip():
@@ -221,6 +254,8 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
                        'shard_sizes': list(map(len, shards)),
                        'module_counts': [len(assigned_modules(ids, source_paths)) for ids in shards],
                        'outcome_parity_verified': verify, 'outcome_sha256': outcome_digest,
+                       'environment_sha256': collection['environment_sha256'],
+                       'attempts': sorted(attempts, key=lambda item: item['name']),
                        'reference_or_collection_seconds': reference_elapsed,
                        'parallel_phase_seconds': parallel_elapsed}
         summary['elapsed_seconds'] = round(time.monotonic() - started, 3)
@@ -228,6 +263,9 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
         return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print(f'OPT failed: {error}', file=sys.stderr)
+        print('OPT failure receipt: ' + json.dumps({'head': head, 'outcome_parity_verified': False,
+              'elapsed_seconds': round(time.monotonic() - started, 3),
+              'attempts': sorted(attempts, key=lambda item: item['name'])}, sort_keys=True), file=sys.stderr, flush=True)
         return 1
 
 
@@ -293,6 +331,16 @@ def pytest_runtest_logreport(report):
         _outcomes[report.nodeid].append(['parent', report.when, report.outcome, reason, xfail, None])
 
 
+def environment_digest(config):
+    """Observed runtime and package/plugin identities; not dependency-byte attestation."""
+    packages = sorted((dist.metadata['Name'] or '', dist.version) for dist in importlib.metadata.distributions())
+    plugins = sorted((dist.project_name, dist.version) for _, dist in config.pluginmanager.list_plugin_distinfo())
+    data = {'python': sys.version, 'implementation': platform.python_implementation(),
+            'platform': sys.platform, 'machine': platform.machine(),
+            'packages': packages, 'plugins': plugins}
+    return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=True).encode('ascii')).hexdigest()
+
+
 def pytest_sessionfinish(session, exitstatus):
     if _spec is not None:
         Path(_spec['receipt']).write_text(json.dumps({
@@ -304,4 +352,5 @@ def pytest_sessionfinish(session, exitstatus):
             'outcomes': dict(_outcomes),
             'exitstatus': int(exitstatus),
             'source_sha256': _spec.get('source_sha256'),
+            'environment_sha256': environment_digest(session.config),
         }), encoding='utf-8')

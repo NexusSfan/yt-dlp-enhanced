@@ -36,7 +36,8 @@ fi
 [ "$(git symbolic-ref --quiet HEAD)" = "$branch" ]
 [ "$(git rev-parse --verify HEAD)" = "$original" ]
 [ "$(git rev-parse --verify refs/tags/upstream-base)" = "$old_ref" ]
-[ -z "$(git status --porcelain)" ]
+status=$(git status --porcelain)
+[ -z "$status" ]
 git apply --index --check "$patch"
 git apply --index "$patch"
 [ "$(git symbolic-ref --quiet HEAD)" = "$branch" ]

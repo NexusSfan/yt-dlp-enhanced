@@ -15,7 +15,7 @@ from devscripts.run_tests import parse_args
 def make_receipt(ids, *, outcome='passed', reason=None, xfail=None, digest=None):
     phases = [['setup', 'passed'], ['call', outcome], ['teardown', 'passed']]
     return {'schema': 1, 'collected': ids, 'full_collection': ids, 'exitstatus': 0,
-            'source_sha256': digest, 'reports': {nodeid: phases for nodeid in ids}, 'subtests': {},
+            'source_sha256': digest, 'environment_sha256': 'b' * 64, 'reports': {nodeid: phases for nodeid in ids}, 'subtests': {},
             'outcomes': {nodeid: [['parent', phase, result, reason if phase == 'call' else None,
                                    xfail if phase == 'call' else None, None] for phase, result in phases]
                          for nodeid in ids}}
@@ -206,3 +206,17 @@ class TestOptShards(unittest.TestCase):
                                  '--workers', '0', 'core'], cwd=root, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         self.assertIn('OPT workers must be 1..32', result.stderr)
+
+    def test_experimental_weighted_partition(self):
+        ids = [f'test/{module}.py::test_{i}' for module, count in [('a', 4), ('b', 3), ('c', 2), ('d', 1)] for i in range(count)]
+        weights = {f'test/{module}.py': cost for module, cost in [('a', 1), ('b', 1), ('c', 10), ('d', 9)]}
+        shards = partition(ids, 2, module_costs=weights)
+        self.assertEqual(shards, partition(list(reversed(ids)), 2, module_costs=weights))
+        self.assertEqual(sorted(ids), sorted(nodeid for shard in shards for nodeid in shard))
+        self.assertEqual([sum(weights[module] for module in set(nodeid.split('::')[0] for nodeid in shard))
+                          for shard in shards], [11, 10])
+        with self.assertRaises(ValueError):
+            partition(ids, 2, module_costs={})
+        receipt = make_receipt([ids[0]])
+        with self.assertRaises(ValueError):
+            verify_receipts([[ids[0]]], [receipt], environment_digest='c' * 64)

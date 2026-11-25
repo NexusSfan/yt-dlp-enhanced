@@ -35,7 +35,7 @@ jobs:
           python -m pip install --require-hashes -r bundle/requirements/test.txt
           python -m pip install --require-hashes -r bundle/requirements/curl-cffi.txt
       - name: Regression guards
-        run: python -m pytest -Werror test/test_opt_shards.py test/test_opt_source.py test/test_js_runtime_smoke.py test/test_qsol_cookie_config.py test/test_qsol_sync.py
+        run: python -m pytest -Werror test/test_opt_shards.py test/test_opt_source.py test/test_js_runtime_smoke.py test/test_qsol_cookie_config.py test/test_qsol_sync.py test/test_qsol_update_integrity.py test/test_process_lifecycle.py
       - name: Serial oracle and seven-worker candidate (no retries)
         run: time python -m devscripts.run_tests --opt --verify --workers 7 core
   linux-smoke:

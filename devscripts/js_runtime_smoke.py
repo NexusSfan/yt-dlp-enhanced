@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 
+from devscripts.process_lifecycle import run_process
 from devscripts.strict_json import loads
 
 
@@ -31,7 +32,8 @@ def run_smoke(path, repetitions=3):
     if not path.is_absolute() or not path.is_file() or not 1 <= repetitions <= 10:
         raise ValueError('provide an explicit absolute executable path and 1..10 repetitions')
     path = path.resolve(strict=True)
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    with path.open('rb') as binary:
+        digest = hashlib.file_digest(binary, 'sha256').hexdigest()
     # Do not inherit proxy settings, JS package paths, or user credentials.
     # This is environment reduction for a trusted local fixture, not a sandbox.
     env = {key: os.environ[key] for key in ('SYSTEMROOT', 'WINDIR') if key in os.environ}
@@ -39,11 +41,11 @@ def run_smoke(path, repetitions=3):
     samples = []
     with tempfile.TemporaryDirectory(prefix='yt-dlp-js-smoke-') as directory:
         env.update(HOME=directory, USERPROFILE=directory, TMPDIR=directory, TEMP=directory, TMP=directory)
-        version = subprocess.run([str(path), '--version'], cwd=directory, env=env,
+        version = run_process([str(path), '--version'], cwd=directory, env=env,
                                  capture_output=True, text=True, timeout=10, check=True).stdout.strip()
         for _ in range(repetitions):
             started = time.monotonic_ns()
-            result = subprocess.run([str(path), '--bun', 'run', '--no-addons', '--no-install', '--prefer-offline', '-'],
+            result = run_process([str(path), '--bun', 'run', '--no-addons', '--no-install', '--prefer-offline', '-'],
                                     input=FIXTURE, cwd=directory, env=env, capture_output=True,
                                     text=True, timeout=10, check=True)
             elapsed = time.monotonic_ns() - started
@@ -51,8 +53,9 @@ def run_smoke(path, repetitions=3):
                 raise ValueError('unexpected runtime diagnostics')
             check_output(result.stdout)
             samples.append(elapsed)
-    if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-        raise ValueError('runtime changed during experiment')
+    with path.open('rb') as binary:
+        if hashlib.file_digest(binary, 'sha256').hexdigest() != digest:
+            raise ValueError('runtime changed during experiment')
     try:
         ejs_version = importlib.metadata.version('yt-dlp-ejs')
     except importlib.metadata.PackageNotFoundError:
