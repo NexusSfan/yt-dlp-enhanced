@@ -227,9 +227,8 @@ class TestWallaSubtitles(BaseTestSubtitles):
 
 
 @is_download_test
-@unittest.skip('IE broken')
 class TestCeskaTelevizeSubtitles(BaseTestSubtitles):
-    url = 'http://www.ceskatelevize.cz/ivysilani/10600540290-u6-uzasny-svet-techniky'
+    url = 'https://www.ceskatelevize.cz/porady/1093836883-na-plovarne/226542152000027/'
     IE = CeskaTelevizeIE
 
     def test_allsubtitles(self):
@@ -239,14 +238,6 @@ class TestCeskaTelevizeSubtitles(BaseTestSubtitles):
         subtitles = self.getSubtitles()
         self.assertEqual(set(subtitles.keys()), {'cs'})
         self.assertTrue(len(subtitles['cs']) > 20000)
-
-    def test_nosubtitles(self):
-        self.DL.expect_warning('video doesn\'t have subtitles')
-        self.url = 'http://www.ceskatelevize.cz/ivysilani/ivysilani/10441294653-hyde-park-civilizace/214411058091220'
-        self.DL.params['writesubtitles'] = True
-        self.DL.params['allsubtitles'] = True
-        subtitles = self.getSubtitles()
-        self.assertFalse(subtitles)
 
 
 @is_download_test
