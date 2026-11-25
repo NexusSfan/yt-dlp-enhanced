@@ -2,8 +2,11 @@
 # Integrate a reviewed upstream delta without advancing the baseline on failure.
 set -eu
 
-cd "$(git rev-parse --show-toplevel)"
-if [ -n "$(git status --porcelain)" ]; then
+root=$(git rev-parse --show-toplevel)
+[ -n "$root" ]
+cd "$root"
+status=$(git status --porcelain)
+if [ -n "$status" ]; then
     echo 'Refusing to sync a dirty worktree or index' >&2
     exit 1
 fi

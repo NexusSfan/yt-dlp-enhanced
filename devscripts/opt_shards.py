@@ -11,6 +11,8 @@ import sys
 import tempfile
 import time
 
+from devscripts.opt_source import manifest_digest, materialize_commit, verify_snapshot
+
 
 def partition(nodeids, workers):
     """Keep each test module together; greedily balance by collected test count."""
@@ -25,11 +27,13 @@ def partition(nodeids, workers):
     return [sorted(shard) for shard in shards]
 
 
-def verify_receipts(expected, receipts):
+def verify_receipts(expected, receipts, *, source_digest=None):
     if len(expected) != len(receipts):
         raise ValueError('missing or extra shard receipts')
     full = sorted(nodeid for ids in expected for nodeid in ids)
     for ids, receipt in zip(expected, receipts, strict=True):
+        if source_digest is not None and receipt.get('source_sha256') != source_digest:
+            raise ValueError('source manifest mismatch')
         if receipt.get('exitstatus') != 0 or sorted(receipt.get('full_collection', [])) != full:
             raise ValueError('full collection or exit status mismatch')
         if sorted(receipt['collected']) != sorted(ids):
@@ -59,14 +63,11 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
         print('OPT workers must be 1..32', file=sys.stderr)
         return 2
     root = Path.cwd()
-    # The experimental path uses a clean tracked snapshot, never a live browser
-    # profile, ignored build artifact, untracked file, or shared test directory.
+    # Cleanliness is an additional precondition, not evidence of source bytes.
     if subprocess.check_output(['git', 'status', '--porcelain'], cwd=root).strip():
         print('OPT requires a clean tracked checkout; commit changes before benchmarking', file=sys.stderr)
         return 2
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, cwd=root).strip()
-    tracked = subprocess.check_output(['git', 'ls-files', '-z'], cwd=root).split(b'\0')
-    tracked = [Path(os.fsdecode(name)) for name in tracked if name]
     args = ['-Werror', '--tb=short', '-m', 'not download', '-p', 'devscripts.opt_shards']
     if ci:
         args.append('--color=yes')
@@ -79,23 +80,22 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
         with tempfile.TemporaryDirectory(prefix='yt-dlp-opt-') as tmp:
             temp = Path(tmp)
 
+            pristine = temp / 'source'
+            manifest = materialize_commit(root, head, pristine)
+            source_digest = manifest_digest(manifest)
+            verify_snapshot(pristine, manifest)
+
             def snapshot(name):
                 dest = temp / name
-                dest.mkdir()
-                for rel in tracked:
-                    src = root / rel
-                    if not src.is_file() or src.is_symlink():
-                        raise ValueError(f'unsupported tracked file: {rel}')
-                    target = dest / rel
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src, target)
+                shutil.copytree(pristine, dest, copy_function=shutil.copy)
+                verify_snapshot(dest, manifest)
                 return dest
 
             def invoke(name, assigned=None):
                 checkout = snapshot(name)
                 spec = temp / f'{name}.json'
                 result = temp / f'{name}-receipt.json'
-                spec.write_text(json.dumps({'assigned': assigned, 'receipt': str(result)}), encoding='utf-8')
+                spec.write_text(json.dumps({'assigned': assigned, 'receipt': str(result), 'source_sha256': source_digest}), encoding='utf-8')
                 env = dict(os.environ, YTDLP_OPT_SPEC=str(spec))
                 # Disable user-supplied pytest overrides; retain the installed pinned plugins.
                 env.pop('PYTEST_ADDOPTS', None)
@@ -109,14 +109,17 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
                     raise ValueError(f'{name}: pytest exit {proc.returncode}')
                 return json.loads(result.read_text(encoding='utf-8'))
 
-            baseline = invoke('collection')['collected']
+            collection = invoke('collection')
+            if collection.get('source_sha256') != source_digest or collection.get('exitstatus') != 0:
+                raise ValueError('invalid collection receipt')
+            baseline = collection['collected']
             shards = partition(baseline, workers)
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(shards)) as pool:
                 receipts = list(pool.map(lambda pair: invoke(f'shard-{pair[0]}', pair[1]), enumerate(shards)))
-            verify_receipts(shards, receipts)
+            verify_receipts(shards, receipts, source_digest=source_digest)
             if subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, cwd=root).strip() != head or subprocess.check_output(['git', 'status', '--porcelain'], cwd=root).strip():
                 raise ValueError('checkout changed during execution')
-            summary = {'head': head, 'workers': len(shards), 'tests': len(baseline),
+            summary = {'head': head, 'source_sha256': source_digest, 'workers': len(shards), 'tests': len(baseline),
                        'collection_sha256': hashlib.sha256(json.dumps(sorted(baseline)).encode()).hexdigest(),
                        'elapsed_seconds': round(time.monotonic() - started, 3), 'shard_sizes': list(map(len, shards))}
             print('OPT verified receipt: ' + json.dumps(summary, sort_keys=True), flush=True)
@@ -180,4 +183,5 @@ def pytest_sessionfinish(session, exitstatus):
             'reports': dict(_reports),
             'subtests': dict(_subtests),
             'exitstatus': int(exitstatus),
+            'source_sha256': _spec.get('source_sha256'),
         }), encoding='utf-8')

@@ -8,6 +8,27 @@ import unittest
 
 @unittest.skipUnless(shutil.which('git') and shutil.which('sh') and os.name != 'nt', 'requires POSIX Git')
 class TestUpstreamSync(unittest.TestCase):
+    def test_failed_preconditions_stop_before_mutation(self):
+        script = Path(__file__).resolve().parents[1] / 'devscripts' / 'merge_upstream.sh'
+        for failure in ('rev-parse', 'status'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                log = root / 'calls'
+                fake = root / 'git'
+                fake.write_text(
+                    '#!/bin/sh\n'
+                    'printf "%s\\n" "$1" >> "$SYNC_LOG"\n'
+                    'if [ "$1" = "$SYNC_FAIL" ]; then exit 42; fi\n'
+                    'case "$1" in rev-parse) printf "%s\\n" "$SYNC_ROOT";; esac\n',
+                    encoding='utf-8')
+                fake.chmod(0o700)
+                env = dict(os.environ, PATH=f'{root}{os.pathsep}{os.environ["PATH"]}',
+                           SYNC_LOG=str(log), SYNC_FAIL=failure, SYNC_ROOT=str(root))
+                result = subprocess.run(['sh', str(script)], cwd=root, env=env, capture_output=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0)
+                expected = ['rev-parse'] if failure == 'rev-parse' else ['rev-parse', 'status']
+                self.assertEqual(log.read_text(encoding='utf-8').splitlines(), expected)
+
     def test_failed_apply_preserves_baseline(self):
         script = Path(__file__).resolve().parents[1] / 'devscripts' / 'merge_upstream.sh'
         with tempfile.TemporaryDirectory() as tmp:
