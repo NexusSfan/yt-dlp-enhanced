@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -38,6 +39,37 @@ class TestOptSource(unittest.TestCase):
             (generation / test.name).write_bytes(b'assert True\n')
             with self.assertRaises(ValueError):
                 verify_snapshot(generation, manifest)
+
+    def test_opt_rejects_hidden_failing_committed_test(self):
+        project = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            scripts = repo / 'devscripts'
+            scripts.mkdir()
+            for filename in ('opt_source.py', 'opt_shards.py'):
+                shutil.copyfile(project / 'devscripts' / filename, scripts / filename)
+            (repo / '.gitignore').write_text('__pycache__/\n.pytest_cache/\n', encoding='utf-8')
+            test = repo / 'test_fixture.py'
+            test.write_bytes(b'def test_fixture(): assert False\n')
+
+            def git(*args):
+                return subprocess.check_output(['git', *args], cwd=repo, text=True).strip()
+
+            git('init')
+            git('add', '.')
+            git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture')
+            git('update-index', '--assume-unchanged', test.name)
+            test.write_bytes(b'def test_fixture(): assert True\n')
+            self.assertEqual(git('status', '--porcelain'), '')
+            env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
+            env.pop('PYTHONPATH', None)
+            command = [sys.executable, '-c',
+                       'from devscripts.opt_shards import run_opt; raise SystemExit(run_opt(1, flaky=True))']
+            result = subprocess.run(command, cwd=repo, env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn('test_fixture.py::test_fixture', result.stdout)
+            self.assertIn('assert False', result.stdout)
+            self.assertNotIn('OPT source/coverage receipt:', result.stdout)
 
     @unittest.skipIf(os.name == 'nt', 'POSIX executable bit')
     def test_committed_mode(self):
