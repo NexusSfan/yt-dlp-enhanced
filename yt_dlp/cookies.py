@@ -90,13 +90,17 @@ class CookieLoadError(YoutubeDLError):
     pass
 
 
-def load_cookies(cookie_file, browser_specification, ydl):
+def load_cookies(cookie_file, browser_specification, ydl, *, strict_file=False):
     try:
         cookie_jars = []
         if browser_specification is not None:
             browser_name, profile, keyring, container = _parse_browser_specification(*browser_specification)
-            cookie_jars.append(
-                extract_cookies_from_browser(browser_name, profile, YDLLogger(ydl), keyring=keyring, container=container))
+            browser_jar = extract_cookies_from_browser(
+                browser_name, profile, YDLLogger(ydl), keyring=keyring, container=container)
+            # Check each source before merging; a file must not mask a failed browser load.
+            if strict_file and (not browser_jar or not browser_jar.extraction_complete):
+                raise CookieLoadError('incomplete browser cookie source')
+            cookie_jars.append(browser_jar)
 
         if cookie_file is not None:
             is_filename = is_path_like(cookie_file)
@@ -104,7 +108,9 @@ def load_cookies(cookie_file, browser_specification, ydl):
                 cookie_file = expand_path(cookie_file)
 
             jar = YoutubeDLCookieJar(cookie_file)
-            if not is_filename or os.access(cookie_file, os.R_OK):
+            if strict_file:
+                jar.load(strict=True)
+            elif not is_filename or os.access(cookie_file, os.R_OK):
                 jar.load()
             cookie_jars.append(jar)
 
@@ -349,6 +355,7 @@ def _extract_chrome_cookies(browser_name, profile, keyring, logger):
                     elif not is_encrypted:
                         unencrypted_cookies += 1
                     jar.set_cookie(cookie)
+            jar.extraction_complete = failed_cookies == 0
             if failed_cookies > 0:
                 failed_message = f' ({failed_cookies} could not be decrypted)'
             else:
@@ -707,6 +714,7 @@ def _parse_safari_cookies_record(data, jar, logger):
         value = p.read_cstring()
     except UnicodeDecodeError:
         logger.warning('failed to parse Safari cookie because UTF-8 decoding failed', only_once=True)
+        jar.extraction_complete = False
         return record_size
 
     p.skip_to(record_size, 'space at the end of the record')
@@ -1294,6 +1302,7 @@ class YoutubeDLCookieJar(http.cookiejar.MozillaCookieJar):
         if is_path_like(filename):
             filename = os.fspath(filename)
         self.filename = filename
+        self.extraction_complete = True
 
     @staticmethod
     def _true_or_false(cndn):
@@ -1351,7 +1360,7 @@ class YoutubeDLCookieJar(http.cookiejar.MozillaCookieJar):
             f.write(self._HEADER)
             self._really_save(f, ignore_discard, ignore_expires)
 
-    def load(self, filename=None, ignore_discard=True, ignore_expires=True):
+    def load(self, filename=None, ignore_discard=True, ignore_expires=True, *, strict=False):
         """Load cookies from a file."""
         if filename is None:
             if self.filename is not None:
@@ -1379,6 +1388,8 @@ class YoutubeDLCookieJar(http.cookiejar.MozillaCookieJar):
                 try:
                     cf.write(prepare_line(line))
                 except http.cookiejar.LoadError as e:
+                    if strict:
+                        raise http.cookiejar.LoadError('invalid cookie file entry') from None
                     if f'{line.strip()} '[0] in '[{"':
                         raise http.cookiejar.LoadError(
                             'Cookies file must be Netscape formatted, not JSON. See  '

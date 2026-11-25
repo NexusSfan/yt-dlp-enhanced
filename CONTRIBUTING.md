@@ -151,6 +151,7 @@ In addition, the following script commands can be used to run simple tasks such 
     * See `hatch fmt --help` for more info
 * `hatch test`: Run extractor or core tests
     * See `hatch test --help` for more info
+    * See [parallel core tests](devscripts/README.md) for an optional developer test runner.
 
 See item 6 of [new extractor tutorial](#adding-support-for-a-new-site) for how to run extractor specific test cases.
 

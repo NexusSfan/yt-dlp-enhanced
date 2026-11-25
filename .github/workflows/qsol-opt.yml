@@ -1,0 +1,58 @@
+name: QSOL experimental OPT and Linux smoke
+on:
+  pull_request:
+    paths:
+      - devscripts/**
+      - test/**
+      - yt_dlp/**
+      - pyproject.toml
+      - bundle/requirements/**
+      - Makefile
+      - .github/workflows/qsol-opt.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qsol-opt-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  opt-candidate:
+    name: opt-candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Install pinned test dependencies
+        run: |
+          python -m pip install --require-hashes -r bundle/requirements/pip.txt
+          python -m pip install --require-hashes -r bundle/requirements/test.txt
+          python -m pip install --require-hashes -r bundle/requirements/curl-cffi.txt
+      - name: Regression guards
+        run: python -m pytest -Werror test/test_parallel_tests.py test/test_source_snapshot.py test/test_cookie_reload.py test/test_upstream_sync.py test/test_update_integrity.py test/test_process_lifecycle.py
+      - name: Compare serial and parallel test results (no retries)
+        run: time python -m devscripts.run_tests --parallel --verify --workers 7 core
+  linux-smoke:
+    name: linux-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Build portable Python executable
+        run: |
+          make lazy-extractors yt-dlp
+          ./yt-dlp --version
+          ./yt-dlp --help >/dev/null
+          sha256sum yt-dlp
