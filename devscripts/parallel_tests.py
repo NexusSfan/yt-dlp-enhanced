@@ -253,6 +253,7 @@ def run_parallel(workers, *, pattern=None, flaky=None, ci=False, verify=False):
                        'reference_or_collection_seconds': reference_elapsed,
                        'parallel_phase_seconds': parallel_elapsed}
         summary['elapsed_seconds'] = round(time.monotonic() - started, 3)
+        # Keep the existing receipt prefix for tools that parse earlier runs.
         print('OPT source/coverage receipt: ' + json.dumps(summary, sort_keys=True), flush=True)
         return 0
     except (KeyboardInterrupt, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
@@ -269,7 +270,7 @@ def run_parallel(workers, *, pattern=None, flaky=None, ci=False, verify=False):
         return 130 if interrupted else 1
 
 
-# Pytest plugin hooks. Loaded only via -p in OPT subprocesses.
+# Pytest plugin hooks, loaded only in parallel test subprocesses.
 _spec = None
 _reports = collections.defaultdict(list)
 _full_collection = []
