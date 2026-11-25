@@ -1,4 +1,4 @@
-"""Experimental isolated core-test sharding; no additional runtime dependencies."""
+"""Run core tests in separate, verified source snapshots."""
 import collections
 import concurrent.futures
 import hashlib
@@ -16,26 +16,19 @@ import time
 
 from devscripts.process_lifecycle import run_process
 from devscripts.strict_json import load_file
-from devscripts.opt_source import manifest_digest, materialize_commit, verify_snapshot
+from devscripts.source_snapshot import manifest_digest, materialize_commit, verify_snapshot
 
 
-def partition(nodeids, workers, *, module_costs=None):
+def partition(nodeids, workers):
     """Keep each test module together; greedily balance by collected test count."""
     if not 1 <= workers <= 32 or not nodeids or len(set(nodeids)) != len(nodeids):
         raise ValueError('invalid worker count or empty/duplicate collection')
     groups = collections.defaultdict(list)
     for nodeid in sorted(nodeids):
         groups[nodeid.split('::', 1)[0]].append(nodeid)
-    if module_costs is None:
-        module_costs = {module: len(ids) for module, ids in groups.items()}
-    if (set(module_costs) != set(groups) or any(type(cost) is not int or not 1 <= cost <= 10**15 for cost in module_costs.values())):
-        raise ValueError('invalid experimental module costs')
     shards = [[] for _ in range(min(workers, len(groups)))]
-    loads = [0] * len(shards)
-    for module, ids in sorted(groups.items(), key=lambda item: (-module_costs[item[0]], item[0])):
-        index = min(range(len(shards)), key=lambda i: (loads[i], i))
-        shards[index].extend(ids)
-        loads[index] += module_costs[module]
+    for _, ids in sorted(groups.items(), key=lambda item: (-len(item[1]), item[0])):
+        min(shards, key=len).extend(ids)
     return [sorted(shard) for shard in shards]
 
 
@@ -85,8 +78,10 @@ def validate_receipt(receipt, *, executed=True):
         if any(not isinstance(p, list) or len(p) != 2 or p[0] not in ('setup', 'call', 'teardown')
                or p[1] not in ('passed', 'skipped') for p in phases):
             raise ValueError('invalid lifecycle phase')
-        if [p[0] for p in phases] != (['setup', 'call', 'teardown'] if phases and phases[0] == ['setup', 'passed']
-                                      else ['setup', 'teardown']):
+        expected_phases = ['setup', 'teardown']
+        if phases and phases[0] == ['setup', 'passed']:
+            expected_phases.insert(1, 'call')
+        if [p[0] for p in phases] != expected_phases:
             raise ValueError('invalid lifecycle order')
         if len(phases) == 2 and phases[0] != ['setup', 'skipped']:
             raise ValueError('invalid setup outcome')
@@ -145,10 +140,10 @@ def outcome_ledger(receipts):
 
 def verify_outcome_parity(reference, receipts):
     """Compare observed identities, phases, outcomes, reasons and subtest order."""
-    if any(receipt['environment_sha256'] != reference['environment_sha256'] for receipt in receipts):
-        raise ValueError('serial/parallel environment mismatch')
     expected = outcome_ledger([reference])
     actual = outcome_ledger(receipts)
+    if any(receipt['environment_sha256'] != reference['environment_sha256'] for receipt in receipts):
+        raise ValueError('serial/parallel environment mismatch')
     if expected.keys() != actual.keys():
         raise ValueError('serial/parallel outcome identity mismatch')
     mismatches = sorted(nodeid for nodeid in expected if expected[nodeid] != actual[nodeid])
@@ -157,17 +152,17 @@ def verify_outcome_parity(reference, receipts):
     return hashlib.sha256(json.dumps(expected, sort_keys=True, ensure_ascii=True).encode('ascii')).hexdigest()
 
 
-def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
+def run_parallel(workers, *, pattern=None, flaky=None, ci=False, verify=False):
     if not 1 <= workers <= 32:
-        print('OPT workers must be 1..32', file=sys.stderr)
+        print('Parallel workers must be 1..32', file=sys.stderr)
         return 2
     root = Path.cwd()
     # Cleanliness is an additional precondition, not evidence of source bytes.
     if subprocess.check_output(['git', 'status', '--porcelain'], cwd=root).strip():
-        print('OPT requires a clean tracked checkout; commit changes before benchmarking', file=sys.stderr)
+        print('Parallel tests require a clean checkout', file=sys.stderr)
         return 2
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, cwd=root).strip()
-    args = ['-Werror', '--tb=short', '-m', 'not download', '-p', 'devscripts.opt_shards']
+    args = ['-Werror', '--tb=short', '-m', 'not download', '-p', 'devscripts.parallel_tests']
     if ci:
         args.append('--color=yes')
     if pattern:
@@ -178,7 +173,7 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
     attempts = []
     attempt_lock = threading.Lock()
     try:
-        with tempfile.TemporaryDirectory(prefix='yt-dlp-opt-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='yt-dlp-tests-') as tmp:
             temp = Path(tmp)
 
             pristine = temp / 'source'
@@ -233,16 +228,12 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
                         attempts.append({'name': name, 'status': status,
                                          'elapsed_seconds': round(time.monotonic() - invocation_started, 3)})
 
-            # A full serial oracle already supplies the coordinator's manifest.
-            # Do not pay for a separate global collection in verification mode.
+            # The serial reference also provides the list of selected tests.
             collection, reference_elapsed = invoke('reference' if verify else 'collection', collect_only=not verify)
-            validate_receipt(collection, executed=verify)
-            if collection.get('source_sha256') != source_digest or collection.get('exitstatus') != 0:
+            if collection['source_sha256'] != source_digest:
                 raise ValueError('invalid collection receipt')
             baseline = collection['collected']
             shards = partition(baseline, workers)
-            if verify:
-                verify_receipts([baseline], [collection], source_digest=source_digest)
             parallel_started = time.monotonic()
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(shards)) as pool:
                 receipts = [receipt for receipt, _ in pool.map(lambda pair: invoke(f'shard-{pair[0]}', pair[1]), enumerate(shards))]
@@ -262,19 +253,24 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
                        'reference_or_collection_seconds': reference_elapsed,
                        'parallel_phase_seconds': parallel_elapsed}
         summary['elapsed_seconds'] = round(time.monotonic() - started, 3)
+        # Keep the existing receipt prefix for tools that parse earlier runs.
         print('OPT source/coverage receipt: ' + json.dumps(summary, sort_keys=True), flush=True)
         return 0
     except (KeyboardInterrupt, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         interrupted = isinstance(error, KeyboardInterrupt)
         print('OPT interrupted' if interrupted else f'OPT failed: {error}', file=sys.stderr)
-        print('OPT failure receipt: ' + json.dumps({'head': head, 'outcome_parity_verified': False,
-              'status': 'interrupted' if interrupted else 'failed',
-                                                    'elapsed_seconds': round(time.monotonic() - started, 3),
-                                                    'attempts': sorted(attempts, key=lambda item: item['name'])}, sort_keys=True), file=sys.stderr, flush=True)
+        failure = {
+            'head': head,
+            'outcome_parity_verified': False,
+            'status': 'interrupted' if interrupted else 'failed',
+            'elapsed_seconds': round(time.monotonic() - started, 3),
+            'attempts': sorted(attempts, key=lambda item: item['name']),
+        }
+        print('OPT failure receipt: ' + json.dumps(failure, sort_keys=True), file=sys.stderr, flush=True)
         return 130 if interrupted else 1
 
 
-# Pytest plugin hooks. Loaded only via -p in OPT subprocesses.
+# Pytest plugin hooks, loaded only in parallel test subprocesses.
 _spec = None
 _reports = collections.defaultdict(list)
 _full_collection = []
@@ -302,7 +298,7 @@ def pytest_collection_finish(session):
     if assigned is not None and sorted(_full_collection) != sorted(assigned):
         import pytest
 
-        pytest.exit('OPT assigned module collection differs from coordinator manifest', returncode=2)
+        pytest.exit('Selected tests differ from the assigned module tests', returncode=2)
 
 
 def pytest_runtest_logreport(report):

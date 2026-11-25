@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from devscripts.opt_shards import assigned_modules, environment_digest, partition, verify_outcome_parity, verify_receipts
+from devscripts.parallel_tests import assigned_modules, environment_digest, partition, verify_outcome_parity, verify_receipts
 from devscripts.strict_json import load_file, loads
 from devscripts.run_tests import parse_args
 
@@ -21,7 +21,7 @@ def make_receipt(ids, *, outcome='passed', reason=None, xfail=None, digest=None)
                          for nodeid in ids}}
 
 
-class TestOptShards(unittest.TestCase):
+class TestParallelTests(unittest.TestCase):
     def test_deterministic_complete_partition(self):
         ids = [f'test/test_{i % 9}.py::test_{i}' for i in range(50)]
         shards = partition(ids, 7)
@@ -77,9 +77,9 @@ class TestOptShards(unittest.TestCase):
                 verify_outcome_parity(reference, alternatives)
 
     def test_cli(self):
-        with patch('sys.argv', ['run_tests', '--opt', '--workers', '7', 'core']):
+        with patch('sys.argv', ['run_tests', '--parallel', '--workers', '7', 'core']):
             args = parse_args()
-        self.assertTrue(args.opt)
+        self.assertTrue(args.parallel)
         self.assertEqual(args.workers, 7)
         self.assertEqual(args.test, ['core'])
 
@@ -87,12 +87,14 @@ class TestOptShards(unittest.TestCase):
         for argv in [[], ['core'], ['download'], ['--pytest-args', '--reruns 2', 'core']]:
             with self.subTest(argv=argv), patch('sys.argv', ['run_tests', *argv]):
                 args = parse_args()
-                self.assertFalse(args.opt)
+                self.assertFalse(args.parallel)
                 self.assertEqual(args.workers, 7)
 
-    def test_opt_default_workers(self):
+    def test_parallel_default_workers(self):
         with patch('sys.argv', ['run_tests', '--opt', 'core']):
-            self.assertEqual(parse_args().workers, 7)
+            args = parse_args()
+        self.assertTrue(args.parallel)
+        self.assertEqual(args.workers, 7)
 
     def test_real_pytest_subtest_receipt(self):
         root = Path(__file__).resolve().parents[1]
@@ -112,7 +114,7 @@ class TestOptShards(unittest.TestCase):
             env = dict(os.environ, YTDLP_OPT_SPEC=str(spec), PYTHONPATH=str(root))
             env.pop('PYTEST_ADDOPTS', None)
             env.pop('PYTEST_PLUGINS', None)
-            result = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'devscripts.opt_shards',
+            result = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'devscripts.parallel_tests',
                                      str(testfile)], cwd=tmp, env=env, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             data = json.loads(receipt.read_text(encoding='utf-8'))
@@ -138,7 +140,7 @@ class TestOptShards(unittest.TestCase):
 
             def invoke(assigned, *extra):
                 spec.write_text(json.dumps({'assigned': assigned, 'receipt': str(receipt)}), encoding='utf-8')
-                return subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'devscripts.opt_shards',
+                return subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'devscripts.parallel_tests',
                                        '-k', 'keep', *extra], cwd=tmp, env=env, capture_output=True, text=True, timeout=60)
 
             result = invoke(None)
@@ -200,33 +202,25 @@ class TestOptShards(unittest.TestCase):
         with self.assertRaises(ValueError):
             loads('{"exitstatus":1,"exitstatus":0}')
 
-    def test_direct_script_opt_import(self):
+    def test_direct_script_parallel_import(self):
         root = Path(__file__).resolve().parents[1]
         result = subprocess.run([sys.executable, str(root / 'devscripts/run_tests.py'), '--opt',
                                  '--workers', '0', 'core'], cwd=root, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-        self.assertIn('OPT workers must be 1..32', result.stderr)
+        self.assertIn('Parallel workers must be 1..32', result.stderr)
 
-    def test_experimental_weighted_partition(self):
-        ids = [f'test/{module}.py::test_{i}' for module, count in [('a', 4), ('b', 3), ('c', 2), ('d', 1)] for i in range(count)]
-        weights = {f'test/{module}.py': cost for module, cost in [('a', 1), ('b', 1), ('c', 10), ('d', 9)]}
-        shards = partition(ids, 2, module_costs=weights)
-        self.assertEqual(shards, partition(list(reversed(ids)), 2, module_costs=weights))
-        self.assertEqual(sorted(ids), sorted(nodeid for shard in shards for nodeid in shard))
-        self.assertEqual([sum(weights[module] for module in set(nodeid.split('::')[0] for nodeid in shard))
-                          for shard in shards], [11, 10])
+    def test_environment_mismatch(self):
+        ids = ['test/a.py::test_a']
+        receipt = make_receipt(ids)
         with self.assertRaises(ValueError):
-            partition(ids, 2, module_costs={})
-        receipt = make_receipt([ids[0]])
-        with self.assertRaises(ValueError):
-            verify_receipts([[ids[0]]], [receipt], environment_digest='c' * 64)
+            verify_receipts([ids], [receipt], environment_digest='c' * 64)
 
     def test_missing_distribution_metadata(self):
         config = Mock()
         config.pluginmanager.list_plugin_distinfo.return_value = []
         dist = Mock()
         dist.metadata = {'Version': '1.0'}
-        with patch('devscripts.opt_shards.importlib.metadata.distributions', return_value=[dist]):
+        with patch('devscripts.parallel_tests.importlib.metadata.distributions', return_value=[dist]):
             digest = environment_digest(config)
             self.assertEqual(len(digest), 64)
             self.assertEqual(environment_digest(config), digest)

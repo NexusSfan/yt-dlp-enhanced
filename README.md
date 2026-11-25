@@ -73,7 +73,7 @@ yt-dlp-enhanced is a feature-rich command-line audio/video downloader with suppo
 # INSTALLATION
 
 <!-- MANPAGE: BEGIN EXCLUDED SECTION -->
-**Enhanced fork:** obtain published binaries from [Jody's release page](https://github.com/jbruchon/yt-dlp-enhanced/releases). The currently published release (2026.11.23) provides Windows x64 only. Check the release assets before downloading; the upstream yt-dlp binaries and PyPI package do not include this fork's enhancements.
+Download enhanced builds from the [release page](https://github.com/jbruchon/yt-dlp-enhanced/releases). The upstream yt-dlp binaries and PyPI package do not include this fork's enhancements.
 
 For Linux/BSD or other platforms, run the enhanced source with Python 3.11 or newer:
 
@@ -83,16 +83,11 @@ cd yt-dlp-enhanced
 python3 -m yt_dlp --version
 ```
 
-See [Dependencies](#dependencies) for optional capabilities, and [Compile](#compile) for existing build infrastructure. Linux release binaries and an enhanced PyPI distribution are not claimed here. Upstream documentation is useful for general usage but upstream installation instructions may install ordinary yt-dlp instead.
+See [Dependencies](#dependencies) for optional capabilities and [Compile](#compile) to build from source.
 
 ## RELEASE FILES
 
-| File | Availability |
-| --- | --- |
-| `yt-dlp.exe` | Published Windows x64 asset on the enhanced release page |
-| Linux/BSD portable executable | Build from source; not currently published by this fork |
-| Other platform binaries | Not currently published by this fork |
-| Checksums/signatures | Check the actual enhanced release assets; do not use upstream checksums for enhanced binaries |
+See the [release assets](https://github.com/jbruchon/yt-dlp-enhanced/releases) for available binaries and their checksums. Build other platforms from source. Do not use upstream yt-dlp checksums for enhanced builds.
 
 #### Licensing
 

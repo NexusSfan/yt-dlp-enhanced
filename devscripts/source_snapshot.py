@@ -1,4 +1,4 @@
-"""Materialise a private, byte-exact Git commit generation for OPT tests."""
+"""Copy and verify committed source files for parallel tests."""
 import hashlib
 import io
 import json
@@ -30,7 +30,7 @@ def materialize_commit(root, head, destination):
             raise ValueError(f'unsupported committed path: {path!r}')
         entries.append((path, mode, oid, int(size)))
     if not entries or sum(size for _, _, _, size in entries) > MAX_SOURCE_BYTES:
-        raise ValueError('empty or oversized source generation')
+        raise ValueError('empty or oversized source snapshot')
     batch = subprocess.check_output(
         ['git', '--no-replace-objects', 'cat-file', '--batch'], cwd=root,
         input=''.join(f'{oid}\n' for _, _, oid, _ in entries).encode('ascii'))
