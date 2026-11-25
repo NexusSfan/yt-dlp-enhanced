@@ -190,9 +190,7 @@ The same applies for changes to the documentation, code style, or overarching ch
 
 ## Adding support for a new site
 
-If you want to add support for a new site, first of all **make sure** this site is **not dedicated to [copyright infringement](#is-the-website-primarily-used-for-piracy)**. yt-dlp does **not support** such sites thus pull requests adding support for them **will be rejected**.
-
-After you have ensured this site is distributing its content legally, you can follow this quick list (assuming your service is called `yourextractor`):
+Follow this quick list (assuming your service is called `yourextractor`):
 
 1. [Fork this repository](https://github.com/jbruchon/yt-dlp-enhanced/fork)
 1. Check out the source code with:
