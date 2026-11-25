@@ -1,14 +1,12 @@
 <!-- MANPAGE: BEGIN EXCLUDED SECTION -->
 <div align="center">
 
-[![YT-DLP](https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/.github/banner.svg)](#readme)
+[![YT-DLP ENHANCED](https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/.github/banner.svg)](#readme)
 
-[![Release version](https://img.shields.io/github/v/release/yt-dlp/yt-dlp?color=brightgreen&label=Latest&style=for-the-badge)](#installation "Installation")
-[![Python Version](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fyt-dlp%2Fyt-dlp%2Frefs%2Fheads%2Fmaster%2Fpyproject.toml&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/blob/master/pyproject.toml "Python Version")
-[![PyPI](https://img.shields.io/badge/-PyPI-blue.svg?logo=pypi&labelColor=555555&style=for-the-badge)](https://pypi.org/project/yt-dlp "PyPI")
-[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?&logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/H5MNcFW63r "Discord")
+[![Release version](https://img.shields.io/github/v/release/jbruchon/yt-dlp-enhanced?color=brightgreen&label=Latest&style=for-the-badge)](#installation "Installation")
+[![Python Version](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fjbruchon%2Fyt-dlp-enhanced%2Frefs%2Fheads%2Fmaster%2Fpyproject.toml&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/blob/master/pyproject.toml "Python Version")
 [![License: Unlicense](https://img.shields.io/badge/-Unlicense-red.svg?style=for-the-badge)](LICENSE "License")
-[![Commits](https://img.shields.io/github/commit-activity/m/yt-dlp/yt-dlp?label=commits&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/commits "Commit History")
+[![Commits](https://img.shields.io/github/commit-activity/m/jbruchon/yt-dlp-enhanced?label=commits&style=for-the-badge)](https://github.com/jbruchon/yt-dlp-enhanced/commits "Commit History")
 
 </div>
 <!-- MANPAGE: END EXCLUDED SECTION -->
