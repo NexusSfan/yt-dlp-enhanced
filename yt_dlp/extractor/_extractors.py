@@ -2116,11 +2116,6 @@ from .umg import UMGDeIE
 from .unistra import UnistraIE
 from .unitednations import UnitedNationsWebTvIE
 from .unity import UnityIE
-from .unsupported import (
-    KnownDRMIE,
-    KnownLiabilityIE,
-    KnownPiracyIE,
-)
 from .uol import UOLIE
 from .uplynk import (
     UplynkIE,
