@@ -69,7 +69,7 @@ class TestUpstreamSync(unittest.TestCase):
 
     def test_unrelated_master_and_failed_commit_leave_original_untouched(self):
         script = Path(__file__).resolve().parents[1] / 'devscripts/merge_upstream.sh'
-        for failure in ('unrelated', 'hook', 'success'):
+        for failure in ('unrelated', 'hook', 'transaction', 'success'):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 upstream, fork = root / 'upstream', root / 'fork'
@@ -104,6 +104,13 @@ class TestUpstreamSync(unittest.TestCase):
                 elif failure == 'hook':
                     hook = fork / '.git/hooks/pre-commit'
                     hook.write_text('#!/bin/sh\nexit 1\n', encoding='utf-8')
+                    hook.chmod(0o700)
+                elif failure == 'transaction':
+                    hook = fork / '.git/hooks/reference-transaction'
+                    hook.write_text(
+                        '#!/bin/sh\n'
+                        'if [ "$1" = prepared ] && grep -q "refs/tags/upstream-base$"; then exit 1; fi\n'
+                        'exit 0\n', encoding='utf-8')
                     hook.chmod(0o700)
                 before = git(fork, 'rev-parse', 'HEAD')
                 result = subprocess.run(['sh', str(script)], cwd=fork, capture_output=True, timeout=60)

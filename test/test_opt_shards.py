@@ -5,10 +5,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from devscripts.opt_shards import assigned_modules, partition, verify_outcome_parity, verify_receipts
-from devscripts.strict_json import loads
+from devscripts.opt_shards import assigned_modules, environment_digest, partition, verify_outcome_parity, verify_receipts
+from devscripts.strict_json import load_file, loads
 from devscripts.run_tests import parse_args
 
 
@@ -220,3 +220,28 @@ class TestOptShards(unittest.TestCase):
         receipt = make_receipt([ids[0]])
         with self.assertRaises(ValueError):
             verify_receipts([[ids[0]]], [receipt], environment_digest='c' * 64)
+
+    def test_missing_distribution_metadata(self):
+        config = Mock()
+        config.pluginmanager.list_plugin_distinfo.return_value = []
+        dist = Mock()
+        dist.metadata = {'Version': '1.0'}
+        with patch('devscripts.opt_shards.importlib.metadata.distributions', return_value=[dist]):
+            digest = environment_digest(config)
+            self.assertEqual(len(digest), 64)
+            self.assertEqual(environment_digest(config), digest)
+            dist.metadata = {}
+            self.assertNotEqual(environment_digest(config), digest)
+
+    def test_receipt_file_size_and_decoder_bounds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'receipt.json'
+            path.write_text('{"a": 1}', encoding='utf-8')
+            with patch('devscripts.strict_json.MAX_JSON_BYTES', 8):
+                self.assertEqual(load_file(path), {'a': 1})
+                path.write_text('{"a": 12}', encoding='utf-8')
+                with self.assertRaises(ValueError):
+                    load_file(path)
+        with patch('devscripts.strict_json.json.loads', side_effect=RecursionError):
+            with self.assertRaises(ValueError):
+                loads('[]')

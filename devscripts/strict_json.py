@@ -3,6 +3,9 @@
 import json
 
 
+MAX_JSON_BYTES = 32 * 1024 * 1024
+
+
 def unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -25,9 +28,8 @@ def loads(text):
 
 def load_file(path):
     # Limit trusted-tool receipts and assignment files before allocating the entire input.
-    limit = 32 * 1024 * 1024
     with path.open('rb') as stream:
-        data = stream.read(limit + 1)
-    if len(data) > limit:
+        data = stream.read(MAX_JSON_BYTES + 1)
+    if len(data) > MAX_JSON_BYTES:
         raise ValueError('JSON file exceeds 32 MiB limit')
     return loads(data.decode('utf-8'))

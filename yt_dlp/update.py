@@ -513,9 +513,9 @@ class Updater:
         elif not os.access(directory, os.W_OK):
             return self._report_permission_error(directory)
 
-        new_filename, old_filename = f'{self.filename}.new', f'{self.filename}.old'
-        if detect_variant() == 'zip':  # Can be replaced in-place
-            new_filename, old_filename = self.filename, None
+        variant = detect_variant()
+        # Windows running executables may be renamed, but not replaced in place.
+        old_filename = f'{self.filename}.old' if variant.startswith('win') else None
 
         try:
             newcontent = self._download_asset(update_info.binary_name, update_info.tag)
@@ -529,68 +529,41 @@ class Updater:
             self._report_network_error('verify the new executable', tag=update_info.tag)
             return False
 
-        if old_filename is None:
-            # Stage zip updates beside the existing executable, then replace atomically.
-            staged = None
+        # Create the stage exclusively in the destination directory for every variant.
+        staged = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=directory, prefix='.yt-dlp-update-', delete=False) as outf:
+                staged = outf.name
+                outf.write(newcontent)
+                outf.flush()
+                os.fsync(outf.fileno())
+            os.chmod(staged, os.stat(self.filename).st_mode)
+            if old_filename:
+                if os.path.lexists(old_filename):
+                    os.remove(old_filename)
+                os.rename(self.filename, old_filename)
             try:
-                with tempfile.NamedTemporaryFile(dir=directory, prefix='.yt-dlp-update-', delete=False) as outf:
-                    staged = outf.name
-                    outf.write(newcontent)
-                    outf.flush()
-                    os.fsync(outf.fileno())
-                os.chmod(staged, os.stat(self.filename).st_mode)
                 os.replace(staged, self.filename)
                 staged = None
             except OSError:
-                self._report_error('Unable to install verified update', True)
-                return False
-            finally:
-                if staged is not None:
-                    with contextlib.suppress(OSError):
-                        os.remove(staged)
-            self.ydl.to_screen(f'Updated yt-dlp to {update_label}')
-            return True
-
-        try:
-            if os.path.exists(old_filename or ''):
-                os.remove(old_filename)
+                if old_filename:
+                    try:
+                        os.rename(old_filename, self.filename)
+                    except OSError:
+                        self._report_error(f'Update failed; original executable retained at {old_filename}', True)
+                        return False
+                raise
         except OSError:
-            return self._report_error('Unable to remove the old version')
-
-        try:
-            with open(new_filename, 'wb') as outf:
-                outf.write(newcontent)
-        except OSError:
-            return self._report_permission_error(new_filename)
+            self._report_error('Unable to install verified update', True)
+            return False
+        finally:
+            if staged is not None:
+                with contextlib.suppress(OSError):
+                    os.remove(staged)
 
         if old_filename:
-            mask = os.stat(self.filename).st_mode
-            try:
-                os.rename(self.filename, old_filename)
-            except OSError:
-                return self._report_error('Unable to move current version')
-
-            try:
-                os.rename(new_filename, self.filename)
-            except OSError:
-                self._report_error('Unable to overwrite current version')
-                return os.rename(old_filename, self.filename)
-
-        variant = detect_variant()
-        if variant.startswith('win'):
             atexit.register(Popen, f'ping 127.0.0.1 -n 5 -w 1000 & del /F "{old_filename}"',
                             shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif old_filename:
-            try:
-                os.remove(old_filename)
-            except OSError:
-                self._report_error('Unable to remove the old version')
-
-            try:
-                os.chmod(self.filename, mask)
-            except OSError:
-                return self._report_error(
-                    f'Unable to set permissions. Run: sudo chmod a+rx {shell_quote(self.filename)}')
 
         self.ydl.to_screen(f'Updated yt-dlp to {update_label}')
         return True
