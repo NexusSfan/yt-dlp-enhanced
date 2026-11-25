@@ -42,12 +42,12 @@ def run_smoke(path, repetitions=3):
     with tempfile.TemporaryDirectory(prefix='yt-dlp-js-smoke-') as directory:
         env.update(HOME=directory, USERPROFILE=directory, TMPDIR=directory, TEMP=directory, TMP=directory)
         version = run_process([str(path), '--version'], cwd=directory, env=env,
-                                 capture_output=True, text=True, timeout=10, check=True).stdout.strip()
+                              capture_output=True, text=True, timeout=10, check=True).stdout.strip()
         for _ in range(repetitions):
             started = time.monotonic_ns()
             result = run_process([str(path), '--bun', 'run', '--no-addons', '--no-install', '--prefer-offline', '-'],
-                                    input=FIXTURE, cwd=directory, env=env, capture_output=True,
-                                    text=True, timeout=10, check=True)
+                                 input=FIXTURE, cwd=directory, env=env, capture_output=True,
+                                 text=True, timeout=10, check=True)
             elapsed = time.monotonic_ns() - started
             if result.stderr:
                 raise ValueError('unexpected runtime diagnostics')

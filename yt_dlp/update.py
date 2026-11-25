@@ -557,7 +557,6 @@ class Updater:
         except OSError:
             return self._report_error('Unable to remove the old version')
 
-
         try:
             with open(new_filename, 'wb') as outf:
                 outf.write(newcontent)
