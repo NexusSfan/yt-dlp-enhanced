@@ -24,6 +24,14 @@ The full serial run and workers use private copies of the same source generation
 
 YTDLP-AUDIT-001 (candidate `42e72529d839d2e862373386c611896fef602d3d`): C-01 and C-02 have candidate fixes; P-01/P-02 remove broad worker collection and unnecessary retention of completed workspaces. These are implementation changes, not validated speedups. The source manifest is checked before execution; it is not a sandbox for malicious tests. Seven workers remains explicit and experimental. No automatic path promotion is enabled.
 
+## YTDLP-JS-001: local-only runtime smoke
+
+```sh
+uv run --no-project --with 'yt-dlp-ejs==0.8.0' python -m devscripts.js_runtime_smoke --bun "$HOME/.bun/bin/bun"
+```
+
+This optional developer diagnostic accepts an explicit trusted executable, runs a fixed synthetic JavaScript fixture in a temporary working directory with reduced inherited environment, disables package installation, checks exact JSON output, and records runtime version, executable/fixture digests, EJS distribution version and raw process-startup-plus-execution samples. It does not retrieve remote scripts, access browser profiles, contact a media service, test EJS challenge solving or establish a security sandbox. No runtime is installed or selected automatically. The existing Bun support ceiling and deprecation warning are unchanged. The end-point executable rehash is diagnostic, not protection against intervening modification. Actual Bun compatibility and isolation remain separate audit/acceptance work.
+
 ## Remaining acceptance work
 
 - Validate the new C-03 outcome gate across the full workload; measure ordinary serial and qualified OPT under symmetric lifecycle boundaries, including memory and runner time.
