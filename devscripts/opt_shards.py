@@ -1,5 +1,4 @@
 """Experimental isolated core-test sharding; no additional runtime dependencies."""
-import argparse
 import collections
 import concurrent.futures
 import hashlib
@@ -30,11 +29,16 @@ def verify_receipts(expected, receipts):
     if len(expected) != len(receipts):
         raise ValueError('missing or extra shard receipts')
     full = sorted(nodeid for ids in expected for nodeid in ids)
-    for ids, receipt in zip(expected, receipts):
+    for ids, receipt in zip(expected, receipts, strict=True):
         if receipt.get('exitstatus') != 0 or sorted(receipt.get('full_collection', [])) != full:
             raise ValueError('full collection or exit status mismatch')
         if sorted(receipt['collected']) != sorted(ids):
             raise ValueError('collection mismatch')
+        subtests = receipt.get('subtests', {})
+        if not set(subtests).issubset(ids):
+            raise ValueError('unexpected subtest reports')
+        if any(outcome not in {'passed', 'skipped'} for outcomes in subtests.values() for outcome in outcomes):
+            raise ValueError('failed subtest')
         reports = receipt['reports']
         if set(reports) != set(ids):
             raise ValueError('missing or unexpected execution reports')
@@ -125,12 +129,15 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
 _spec = None
 _reports = collections.defaultdict(list)
 _full_collection = []
+_subtests = collections.defaultdict(list)
 
 
 def pytest_configure(config):
     global _spec
     _reports.clear()
     _full_collection.clear()
+    _subtests.clear()
+    _spec = None
     path = os.environ.get('YTDLP_OPT_SPEC')
     if path:
         _spec = json.loads(Path(path).read_text(encoding='utf-8'))
@@ -150,7 +157,17 @@ def pytest_collection_finish(session):
 
 
 def pytest_runtest_logreport(report):
-    if _spec is not None:
+    if _spec is None:
+        return
+    # pytest 9 emits a separate SubtestReport for each unittest subTest.
+    # Keep these outcomes separate from the parent's unique lifecycle phases.
+    try:
+        from _pytest.subtests import SubtestReport
+    except ImportError:
+        SubtestReport = ()
+    if isinstance(report, SubtestReport):
+        _subtests[report.nodeid].append(report.outcome)
+    else:
         _reports[report.nodeid].append([report.when, report.outcome])
 
 
@@ -160,5 +177,6 @@ def pytest_sessionfinish(session, exitstatus):
             'collected': [item.nodeid for item in session.items],
             'full_collection': _full_collection,
             'reports': dict(_reports),
+            'subtests': dict(_subtests),
             'exitstatus': int(exitstatus),
         }), encoding='utf-8')

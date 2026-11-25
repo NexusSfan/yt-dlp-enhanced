@@ -1,9 +1,14 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from devscripts.run_tests import parse_args
-
 from devscripts.opt_shards import partition, verify_receipts
+from devscripts.run_tests import parse_args
 
 
 class TestOptShards(unittest.TestCase):
@@ -26,6 +31,47 @@ class TestOptShards(unittest.TestCase):
         self.assertEqual(args.workers, 7)
         self.assertEqual(args.test, ['core'])
 
+    def test_serial_cli_defaults(self):
+        for argv in [[], ['core'], ['download'], ['--pytest-args', '--reruns 2', 'core']]:
+            with self.subTest(argv=argv), patch('sys.argv', ['run_tests', *argv]):
+                args = parse_args()
+                self.assertFalse(args.opt)
+                self.assertEqual(args.workers, 7)
+
+    def test_opt_default_workers(self):
+        with patch('sys.argv', ['run_tests', '--opt', 'core']):
+            self.assertEqual(parse_args().workers, 7)
+
+    def test_real_pytest_subtest_receipt(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            testfile = tmp / 'test_fixture.py'
+            spec = tmp / 'spec.json'
+            receipt = tmp / 'receipt.json'
+            testfile.write_text(
+                'import unittest\n\n'
+                'class TestFixture(unittest.TestCase):\n'
+                '    def test_subtests(self):\n'
+                '        for i in range(3):\n'
+                '            with self.subTest(i=i):\n'
+                '                self.assertGreaterEqual(i, 0)\n', encoding='utf-8')
+            spec.write_text(json.dumps({'assigned': None, 'receipt': str(receipt)}), encoding='utf-8')
+            env = dict(os.environ, YTDLP_OPT_SPEC=str(spec), PYTHONPATH=str(root))
+            env.pop('PYTEST_ADDOPTS', None)
+            env.pop('PYTEST_PLUGINS', None)
+            result = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'devscripts.opt_shards',
+                                     str(testfile)], cwd=tmp, env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            data = json.loads(receipt.read_text(encoding='utf-8'))
+            self.assertEqual(len(data['collected']), 1)
+            verify_receipts([data['collected']], [data])
+            # An actual duplicate parent call must still be rejected.
+            nodeid = data['collected'][0]
+            data['reports'][nodeid].append(['call', 'passed'])
+            with self.assertRaises(ValueError):
+                verify_receipts([data['collected']], [data])
+
     def test_invalid_inputs(self):
         for ids, workers in [([], 7), (['a', 'a'], 7), (['a'], 0), (['a'], 33)]:
             with self.assertRaises(ValueError):
@@ -36,7 +82,10 @@ class TestOptShards(unittest.TestCase):
         good = {'collected': ids, 'full_collection': ids, 'exitstatus': 0, 'reports': {ids[0]: [
             ['setup', 'passed'], ['call', 'passed'], ['teardown', 'passed']]}}
         verify_receipts([ids], [good])
-        for receipts in [[], [dict(good, full_collection=ids + ['unexpected'])], [dict(good, exitstatus=1)], [dict(good, reports={})], [{'collected': [], 'reports': {}}],
+        verify_receipts([ids], [dict(good, subtests={ids[0]: ['passed', 'passed', 'skipped']})])
+        with self.assertRaises(ValueError):
+            verify_receipts([ids], [dict(good, subtests={ids[0]: ['failed']})])
+        for receipts in [[], [dict(good, full_collection=[*ids, 'unexpected'])], [dict(good, exitstatus=1)], [dict(good, reports={})], [{'collected': [], 'reports': {}}],
                          [{'collected': ids, 'reports': {}}],
                          [{'collected': ids, 'reports': {ids[0]: [['setup', 'passed']]}}]]:
             with self.assertRaises(ValueError):
