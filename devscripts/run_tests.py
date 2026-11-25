@@ -87,6 +87,11 @@ if __name__ == '__main__':
         args = parse_args()
 
         os.chdir(Path(__file__).parent.parent)
+        if args.opt:
+            if args.test != ['core'] or args.pytest_args or os.getenv('HATCH_TEST_ARGS'):
+                sys.exit('OPT supports core only, without arbitrary pytest arguments or retries')
+            from devscripts.opt_shards import run_opt
+            sys.exit(run_opt(args.workers, pattern=args.k, flaky=args.flaky, ci=bool(os.getenv('CI'))))
         sys.exit(run_tests(
             *args.test,
             pattern=args.k,
@@ -94,4 +99,4 @@ if __name__ == '__main__':
             flaky=args.flaky,
         ))
     except KeyboardInterrupt:
-        pass
+        sys.exit(130)
