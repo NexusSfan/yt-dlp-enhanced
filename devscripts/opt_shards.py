@@ -29,7 +29,10 @@ def partition(nodeids, workers):
 def verify_receipts(expected, receipts):
     if len(expected) != len(receipts):
         raise ValueError('missing or extra shard receipts')
+    full = sorted(nodeid for ids in expected for nodeid in ids)
     for ids, receipt in zip(expected, receipts):
+        if receipt.get('exitstatus') != 0 or sorted(receipt.get('full_collection', [])) != full:
+            raise ValueError('full collection or exit status mismatch')
         if sorted(receipt['collected']) != sorted(ids):
             raise ValueError('collection mismatch')
         reports = receipt['reports']
@@ -121,11 +124,13 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
 # Pytest plugin hooks. Loaded only via -p in OPT subprocesses.
 _spec = None
 _reports = collections.defaultdict(list)
+_full_collection = []
 
 
 def pytest_configure(config):
     global _spec
     _reports.clear()
+    _full_collection.clear()
     path = os.environ.get('YTDLP_OPT_SPEC')
     if path:
         _spec = json.loads(Path(path).read_text(encoding='utf-8'))
@@ -134,6 +139,7 @@ def pytest_configure(config):
 def pytest_collection_finish(session):
     if _spec is None:
         return
+    _full_collection.extend(item.nodeid for item in session.items)
     assigned = _spec['assigned']
     if assigned is not None:
         selected = set(assigned)
@@ -152,6 +158,7 @@ def pytest_sessionfinish(session, exitstatus):
     if _spec is not None:
         Path(_spec['receipt']).write_text(json.dumps({
             'collected': [item.nodeid for item in session.items],
+            'full_collection': _full_collection,
             'reports': dict(_reports),
             'exitstatus': int(exitstatus),
         }), encoding='utf-8')

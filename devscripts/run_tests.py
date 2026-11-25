@@ -33,6 +33,8 @@ def parse_args():
         '-k', help='run a test matching EXPRESSION. Same as "pytest -k"', metavar='EXPRESSION')
     parser.add_argument(
         '--pytest-args', help='arguments to passthrough to pytest')
+    parser.add_argument('--opt', action='store_true', help='Experimental deterministic core-test shards')
+    parser.add_argument('--workers', type=int, default=7, help='OPT worker count (default: 7)')
     return parser.parse_args()
 
 
