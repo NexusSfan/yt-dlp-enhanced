@@ -10,7 +10,12 @@ if [ -n "$status" ]; then
     echo 'Refusing to sync a dirty worktree or index' >&2
     exit 1
 fi
-git symbolic-ref --quiet HEAD >/dev/null
+branch=$(git symbolic-ref --quiet HEAD)
+if [ "$branch" != refs/heads/master ]; then
+    echo 'Refusing upstream sync outside master' >&2
+    exit 1
+fi
+original=$(git rev-parse --verify HEAD)
 old_ref=$(git rev-parse --verify refs/tags/upstream-base)
 old=$(git rev-parse --verify 'refs/tags/upstream-base^{commit}')
 git fetch upstream
@@ -28,8 +33,14 @@ if [ ! -s "$patch" ]; then
     echo 'Empty upstream delta; review baseline advancement manually' >&2
     exit 1
 fi
+[ "$(git symbolic-ref --quiet HEAD)" = "$branch" ]
+[ "$(git rev-parse --verify HEAD)" = "$original" ]
+[ "$(git rev-parse --verify refs/tags/upstream-base)" = "$old_ref" ]
+[ -z "$(git status --porcelain)" ]
 git apply --index --check "$patch"
 git apply --index "$patch"
+[ "$(git symbolic-ref --quiet HEAD)" = "$branch" ]
+[ "$(git rev-parse --verify HEAD)" = "$original" ]
 git commit -m "Sync upstream $old..$new"
 # Compare-and-swap: never overwrite another process's baseline.
 git update-ref refs/tags/upstream-base "$new" "$old_ref"

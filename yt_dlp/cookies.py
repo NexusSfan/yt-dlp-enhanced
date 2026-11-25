@@ -90,7 +90,7 @@ class CookieLoadError(YoutubeDLError):
     pass
 
 
-def load_cookies(cookie_file, browser_specification, ydl):
+def load_cookies(cookie_file, browser_specification, ydl, *, strict_file=False):
     try:
         cookie_jars = []
         if browser_specification is not None:
@@ -104,7 +104,9 @@ def load_cookies(cookie_file, browser_specification, ydl):
                 cookie_file = expand_path(cookie_file)
 
             jar = YoutubeDLCookieJar(cookie_file)
-            if not is_filename or os.access(cookie_file, os.R_OK):
+            if strict_file:
+                jar.load(strict=True)
+            elif not is_filename or os.access(cookie_file, os.R_OK):
                 jar.load()
             cookie_jars.append(jar)
 
@@ -1351,7 +1353,7 @@ class YoutubeDLCookieJar(http.cookiejar.MozillaCookieJar):
             f.write(self._HEADER)
             self._really_save(f, ignore_discard, ignore_expires)
 
-    def load(self, filename=None, ignore_discard=True, ignore_expires=True):
+    def load(self, filename=None, ignore_discard=True, ignore_expires=True, *, strict=False):
         """Load cookies from a file."""
         if filename is None:
             if self.filename is not None:
@@ -1379,6 +1381,8 @@ class YoutubeDLCookieJar(http.cookiejar.MozillaCookieJar):
                 try:
                     cf.write(prepare_line(line))
                 except http.cookiejar.LoadError as e:
+                    if strict:
+                        raise http.cookiejar.LoadError('invalid cookie file entry') from None
                     if f'{line.strip()} '[0] in '[{"':
                         raise http.cookiejar.LoadError(
                             'Cookies file must be Netscape formatted, not JSON. See  '

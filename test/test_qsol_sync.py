@@ -58,3 +58,11 @@ class TestUpstreamSync(unittest.TestCase):
             self.assertEqual(git(fork, 'rev-parse', 'upstream-base'), original)
             self.assertEqual(git(fork, 'rev-parse', 'HEAD'), before)
             self.assertEqual(git(fork, 'status', '--porcelain'), '')
+
+    def test_rejects_unrelated_branch_before_fetch(self):
+        script = Path(__file__).resolve().parents[1] / 'devscripts' / 'merge_upstream.sh'
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.check_call(['git', 'init', '-b', 'unrelated'], cwd=tmp)
+            result = subprocess.run(['sh', str(script)], cwd=tmp, capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('outside master', result.stderr)

@@ -11,6 +11,7 @@ import platform
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from zipimport import zipimporter
 
@@ -497,6 +498,10 @@ class Updater:
             self._report_error(err, True)
             return False
 
+        if not isinstance(update_info.checksum, str) or not re.fullmatch(r'[0-9a-fA-F]{64}', update_info.checksum):
+            self._report_error('Refusing update without a valid SHA-256 checksum', True)
+            return False
+
         self.ydl.to_screen(f'Current Build Hash: {_sha256_file(self.filename)}')
 
         update_label = _make_label(self.requested_repo, update_info.tag, update_info.version)
@@ -513,12 +518,6 @@ class Updater:
             new_filename, old_filename = self.filename, None
 
         try:
-            if os.path.exists(old_filename or ''):
-                os.remove(old_filename)
-        except OSError:
-            return self._report_error('Unable to remove the old version')
-
-        try:
             newcontent = self._download_asset(update_info.binary_name, update_info.tag)
         except (_GitHubError, *network_exceptions) as e:
             if isinstance(e, HTTPError) and e.status == 404:
@@ -526,10 +525,38 @@ class Updater:
                     f'The requested tag {self.requested_repo}@{update_info.tag} does not exist', True)
             return self._report_network_error(f'fetch updates: {e}', tag=update_info.tag)
 
-        if not update_info.checksum:
-            self._block_restart('Automatically restarting into unverified builds is disabled for security reasons')
-        elif hashlib.sha256(newcontent).hexdigest() != update_info.checksum:
-            return self._report_network_error('verify the new executable', tag=update_info.tag)
+        if hashlib.sha256(newcontent).hexdigest() != update_info.checksum.lower():
+            self._report_network_error('verify the new executable', tag=update_info.tag)
+            return False
+
+        if old_filename is None:
+            # Stage zip updates beside the existing executable, then replace atomically.
+            staged = None
+            try:
+                with tempfile.NamedTemporaryFile(dir=directory, prefix='.yt-dlp-update-', delete=False) as outf:
+                    staged = outf.name
+                    outf.write(newcontent)
+                    outf.flush()
+                    os.fsync(outf.fileno())
+                os.chmod(staged, os.stat(self.filename).st_mode)
+                os.replace(staged, self.filename)
+                staged = None
+            except OSError:
+                self._report_error('Unable to install verified update', True)
+                return False
+            finally:
+                if staged is not None:
+                    with contextlib.suppress(OSError):
+                        os.remove(staged)
+            self.ydl.to_screen(f'Updated yt-dlp to {update_label}')
+            return True
+
+        try:
+            if os.path.exists(old_filename or ''):
+                os.remove(old_filename)
+        except OSError:
+            return self._report_error('Unable to remove the old version')
+
 
         try:
             with open(new_filename, 'wb') as outf:

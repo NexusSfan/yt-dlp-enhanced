@@ -46,7 +46,7 @@ class TestOptSource(unittest.TestCase):
             repo = Path(directory)
             scripts = repo / 'devscripts'
             scripts.mkdir()
-            for filename in ('opt_source.py', 'opt_shards.py'):
+            for filename in ('opt_source.py', 'opt_shards.py', 'strict_json.py'):
                 shutil.copyfile(project / 'devscripts' / filename, scripts / filename)
             (repo / '.gitignore').write_text('__pycache__/\n.pytest_cache/\n', encoding='utf-8')
             test = repo / 'test_fixture.py'
