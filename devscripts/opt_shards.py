@@ -78,6 +78,7 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
     try:
         with tempfile.TemporaryDirectory(prefix='yt-dlp-opt-') as tmp:
             temp = Path(tmp)
+
             def snapshot(name):
                 dest = temp / name
                 dest.mkdir()
