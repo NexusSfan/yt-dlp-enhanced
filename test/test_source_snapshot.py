@@ -9,11 +9,11 @@ import tempfile
 import time
 import unittest
 
-from devscripts.opt_source import manifest_digest, materialize_commit, verify_snapshot
+from devscripts.source_snapshot import manifest_digest, materialize_commit, verify_snapshot
 
 
 @unittest.skipUnless(shutil.which('git'), 'requires Git')
-class TestOptSource(unittest.TestCase):
+class TestSourceSnapshot(unittest.TestCase):
     def test_committed_bytes_not_hidden_worktree_edits(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -43,13 +43,13 @@ class TestOptSource(unittest.TestCase):
             with self.assertRaises(ValueError):
                 verify_snapshot(generation, manifest)
 
-    def test_opt_rejects_hidden_failing_committed_test(self):
+    def test_parallel_rejects_hidden_failing_committed_test(self):
         project = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             scripts = repo / 'devscripts'
             scripts.mkdir()
-            for filename in ('opt_source.py', 'opt_shards.py', 'strict_json.py', 'process_lifecycle.py'):
+            for filename in ('source_snapshot.py', 'parallel_tests.py', 'strict_json.py', 'process_lifecycle.py'):
                 shutil.copyfile(project / 'devscripts' / filename, scripts / filename)
             (repo / '.gitignore').write_text('__pycache__/\n.pytest_cache/\n', encoding='utf-8')
             test = repo / 'test_fixture.py'
@@ -67,7 +67,7 @@ class TestOptSource(unittest.TestCase):
             env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
             env.pop('PYTHONPATH', None)
             command = [sys.executable, '-c',
-                       'from devscripts.opt_shards import run_opt; raise SystemExit(run_opt(1, flaky=True))']
+                       'from devscripts.parallel_tests import run_parallel; raise SystemExit(run_parallel(1, flaky=True))']
             result = subprocess.run(command, cwd=repo, env=env, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn('test_fixture.py::test_fixture', result.stdout)
@@ -103,7 +103,7 @@ class TestOptSource(unittest.TestCase):
             repo = root / 'repo'
             scripts = repo / 'devscripts'
             scripts.mkdir(parents=True)
-            for filename in ('opt_source.py', 'opt_shards.py', 'strict_json.py', 'process_lifecycle.py'):
+            for filename in ('source_snapshot.py', 'parallel_tests.py', 'strict_json.py', 'process_lifecycle.py'):
                 shutil.copyfile(project / 'devscripts' / filename, scripts / filename)
             (repo / '.gitignore').write_text('__pycache__/\n.pytest_cache/\n', encoding='utf-8')
             (repo / 'test_first.py').write_text('def test_first(): pass\n', encoding='utf-8')
@@ -122,7 +122,7 @@ class TestOptSource(unittest.TestCase):
             env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD='1', OPT_INTERRUPT_MARKER=str(marker))
             env.pop('PYTHONPATH', None)
             command = [sys.executable, '-c',
-                       'from devscripts.opt_shards import run_opt; raise SystemExit(run_opt(2, flaky=True, verify=True))']
+                       'from devscripts.parallel_tests import run_parallel; raise SystemExit(run_parallel(2, flaky=True, verify=True))']
             with subprocess.Popen(command, cwd=repo, env=env, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE, text=True) as process:
                 try:
