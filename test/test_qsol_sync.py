@@ -66,3 +66,55 @@ class TestUpstreamSync(unittest.TestCase):
             result = subprocess.run(['sh', str(script)], cwd=tmp, capture_output=True, text=True, timeout=30)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('outside master', result.stderr)
+
+    def test_unrelated_master_and_failed_commit_leave_original_untouched(self):
+        script = Path(__file__).resolve().parents[1] / 'devscripts/merge_upstream.sh'
+        for failure in ('unrelated', 'hook', 'success'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                upstream, fork = root / 'upstream', root / 'fork'
+
+                def git(cwd, *args):
+                    return subprocess.check_output(['git', '-C', str(cwd), *args],
+                                                   text=True, stderr=subprocess.STDOUT).strip()
+
+                def commit(cwd, filename):
+                    (cwd / filename).write_text('fixture\n', encoding='utf-8')
+                    git(cwd, 'add', filename)
+                    git(cwd, 'commit', '-m', filename)
+
+                upstream.mkdir()
+                git(upstream, 'init', '-b', 'master')
+                for key, value in [('user.name', 'Fixture'), ('user.email', 'fixture@example.invalid')]:
+                    git(upstream, 'config', key, value)
+                commit(upstream, 'base')
+                base = git(upstream, 'rev-parse', 'HEAD')
+                subprocess.check_call(['git', 'clone', str(upstream), str(fork)])
+                git(fork, 'remote', 'rename', 'origin', 'upstream')
+                git(fork, 'config', 'user.name', 'Fixture')
+                git(fork, 'config', 'user.email', 'fixture@example.invalid')
+                git(fork, 'tag', 'upstream-base', base)
+                commit(upstream, 'new')
+                latest = git(upstream, 'rev-parse', 'HEAD')
+                if failure == 'unrelated':
+                    git(fork, 'checkout', '--orphan', 'other')
+                    git(fork, 'rm', '-rf', '.')
+                    commit(fork, 'other')
+                    git(fork, 'branch', '-M', 'master')
+                elif failure == 'hook':
+                    hook = fork / '.git/hooks/pre-commit'
+                    hook.write_text('#!/bin/sh\nexit 1\n', encoding='utf-8')
+                    hook.chmod(0o700)
+                before = git(fork, 'rev-parse', 'HEAD')
+                result = subprocess.run(['sh', str(script)], cwd=fork, capture_output=True, timeout=60)
+                if failure == 'success':
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(git(fork, 'rev-parse', 'HEAD^'), before)
+                    self.assertEqual(git(fork, 'rev-parse', 'upstream-base'), latest)
+                    self.assertTrue((fork / 'new').is_file())
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(git(fork, 'rev-parse', 'HEAD'), before)
+                    self.assertEqual(git(fork, 'rev-parse', 'upstream-base'), base)
+                    self.assertFalse((fork / 'new').exists())
+                self.assertEqual(git(fork, 'status', '--porcelain'), '')

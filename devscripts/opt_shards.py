@@ -15,7 +15,7 @@ import threading
 import time
 
 from devscripts.process_lifecycle import run_process
-from devscripts.strict_json import loads
+from devscripts.strict_json import load_file
 from devscripts.opt_source import manifest_digest, materialize_commit, verify_snapshot
 
 
@@ -212,7 +212,7 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
                     proc = run_process(command, cwd=checkout, env=env, timeout=900)
                     if proc.returncode:
                         raise ValueError(f'{name}: pytest exit {proc.returncode}')
-                    receipt = loads(result.read_text(encoding='utf-8'))
+                    receipt = load_file(result)
                 finally:
                     shutil.rmtree(checkout)
                 return receipt
@@ -225,6 +225,9 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
                     validate_receipt(receipt, executed=not collect_only)
                     status = 'completed'
                     return receipt, round(time.monotonic() - invocation_started, 3)
+                except KeyboardInterrupt:
+                    status = 'interrupted'
+                    raise
                 finally:
                     with attempt_lock:
                         attempts.append({'name': name, 'status': status,
@@ -261,12 +264,14 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
         summary['elapsed_seconds'] = round(time.monotonic() - started, 3)
         print('OPT source/coverage receipt: ' + json.dumps(summary, sort_keys=True), flush=True)
         return 0
-    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
-        print(f'OPT failed: {error}', file=sys.stderr)
+    except (KeyboardInterrupt, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        interrupted = isinstance(error, KeyboardInterrupt)
+        print('OPT interrupted' if interrupted else f'OPT failed: {error}', file=sys.stderr)
         print('OPT failure receipt: ' + json.dumps({'head': head, 'outcome_parity_verified': False,
+              'status': 'interrupted' if interrupted else 'failed',
               'elapsed_seconds': round(time.monotonic() - started, 3),
               'attempts': sorted(attempts, key=lambda item: item['name'])}, sort_keys=True), file=sys.stderr, flush=True)
-        return 1
+        return 130 if interrupted else 1
 
 
 # Pytest plugin hooks. Loaded only via -p in OPT subprocesses.
@@ -286,7 +291,7 @@ def pytest_configure(config):
     _spec = None
     path = os.environ.get('YTDLP_OPT_SPEC')
     if path:
-        _spec = loads(Path(path).read_text(encoding='utf-8'))
+        _spec = load_file(Path(path))
 
 
 def pytest_collection_finish(session):
@@ -333,7 +338,8 @@ def pytest_runtest_logreport(report):
 
 def environment_digest(config):
     """Observed runtime and package/plugin identities; not dependency-byte attestation."""
-    packages = sorted((dist.metadata['Name'] or '', dist.version) for dist in importlib.metadata.distributions())
+    packages = sorted((dist.metadata.get('Name') or '', dist.metadata.get('Version') or '')
+                      for dist in importlib.metadata.distributions())
     plugins = sorted((dist.project_name, dist.version) for _, dist in config.pluginmanager.list_plugin_distinfo())
     data = {'python': sys.version, 'implementation': platform.python_implementation(),
             'platform': sys.platform, 'machine': platform.machine(),

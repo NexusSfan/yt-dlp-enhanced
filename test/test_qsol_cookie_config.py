@@ -2,6 +2,7 @@ import io
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from yt_dlp import YoutubeDL, parse_options
 from yt_dlp.cookies import YoutubeDLCookieJar
@@ -47,3 +48,28 @@ class TestCookieReloadOptions(unittest.TestCase):
             self.assertTrue(ydl.reload_cookies())
             self.assertIs(ydl.cookiejar, jar)
             self.assertEqual(list(jar), [])
+
+    def test_combined_sources_do_not_mask_incomplete_browser_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'cookies.txt'
+            header = '# Netscape HTTP Cookie File\n'
+            entry = '.example.invalid\tTRUE\t/\tFALSE\t0\tfixture\t{}\n'
+            for browser_state in ('empty', 'partial', 'exception', 'complete'):
+                with self.subTest(browser_state=browser_state):
+                    path.write_text(header + entry.format('new'), encoding='utf-8')
+                    ydl = YoutubeDL({'cookie_reload': True, 'cookiefile': str(path),
+                                     'cookiesfrombrowser': ('firefox',)}, auto_init=False)
+                    jar = YoutubeDLCookieJar(io.StringIO(header + entry.format('old')))
+                    jar.load()
+                    ydl.cookiejar = jar
+                    browser = YoutubeDLCookieJar(io.StringIO(
+                        header if browser_state == 'empty' else header + entry.format('browser')))
+                    browser.load()
+                    browser.extraction_complete = browser_state != 'partial'
+                    with patch('yt_dlp.cookies.extract_cookies_from_browser', return_value=browser,
+                               side_effect=OSError('synthetic') if browser_state == 'exception' else None):
+                        expected = browser_state == 'complete'
+                        self.assertIs(ydl.reload_cookies(), expected)
+                    self.assertIs(ydl.cookiejar, jar)
+                    self.assertEqual([cookie.value for cookie in jar], ['new' if expected else 'old'])
+                    self.assertIs(ydl._cookie_reload_trial, expected)

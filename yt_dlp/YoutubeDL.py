@@ -1901,10 +1901,6 @@ class YoutubeDL:
             self.write_debug('Reloading cookies from source...')
             new_jar = load_cookies(
                 self.params.get('cookiefile'), self.params.get('cookiesfrombrowser'), self, strict_file=True)
-            # Browser extractors may return an empty jar after an unavailable source.
-            # Without a success signal, preserve existing state rather than guess.
-            if self.params.get('cookiesfrombrowser') and not new_jar:
-                return False
             jar = self.cookiejar
             # Preserve the jar object already shared with request handlers.
             with jar._cookies_lock:

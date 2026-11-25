@@ -1,5 +1,5 @@
 #!/bin/sh
-# Integrate a reviewed upstream delta without advancing the baseline on failure.
+# Apply a reviewed upstream delta without changing the branch or baseline until both are ready.
 set -eu
 
 root=$(git rev-parse --show-toplevel)
@@ -18,6 +18,10 @@ fi
 original=$(git rev-parse --verify HEAD)
 old_ref=$(git rev-parse --verify refs/tags/upstream-base)
 old=$(git rev-parse --verify 'refs/tags/upstream-base^{commit}')
+if ! git merge-base --is-ancestor "$old" "$original"; then
+    echo 'Refusing to sync master unrelated to upstream-base' >&2
+    exit 1
+fi
 git fetch upstream
 new=$(git rev-parse --verify 'refs/remotes/upstream/master^{commit}')
 if [ "$old" = "$new" ]; then
@@ -25,23 +29,49 @@ if [ "$old" = "$new" ]; then
     exit 0
 fi
 git merge-base --is-ancestor "$old" "$new"
-patch=$(mktemp)
-trap 'rm -f "$patch"' EXIT
+
+tmp=$(mktemp -d)
+worktree="$tmp/worktree"
+cleanup() {
+    if [ -e "$worktree/.git" ]; then
+        git worktree remove --force "$worktree" || {
+            echo "Temporary sync worktree retained at $worktree" >&2
+            return
+        }
+    fi
+    rm -rf "$tmp"
+}
+trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
-git diff --binary --no-ext-diff --no-textconv "$old" "$new" > "$patch"
-if [ ! -s "$patch" ]; then
+
+git diff --binary --no-ext-diff --no-textconv "$old" "$new" > "$tmp/patch"
+if [ ! -s "$tmp/patch" ]; then
     echo 'Empty upstream delta; review baseline advancement manually' >&2
     exit 1
 fi
+git worktree add --detach "$worktree" "$original"
+git -C "$worktree" apply --index "$tmp/patch"
+expected_tree=$(git -C "$worktree" write-tree)
+git -C "$worktree" commit -m "Sync upstream $old..$new"
+candidate=$(git -C "$worktree" rev-parse --verify HEAD)
+[ "$(git -C "$worktree" rev-parse "$candidate^")" = "$original" ]
+[ "$(git -C "$worktree" rev-parse "$candidate^{tree}")" = "$expected_tree" ]
+
 [ "$(git symbolic-ref --quiet HEAD)" = "$branch" ]
 [ "$(git rev-parse --verify HEAD)" = "$original" ]
 [ "$(git rev-parse --verify refs/tags/upstream-base)" = "$old_ref" ]
 status=$(git status --porcelain)
 [ -z "$status" ]
-git apply --index --check "$patch"
-git apply --index "$patch"
-[ "$(git symbolic-ref --quiet HEAD)" = "$branch" ]
-[ "$(git rev-parse --verify HEAD)" = "$original" ]
-git commit -m "Sync upstream $old..$new"
-# Compare-and-swap: never overwrite another process's baseline.
-git update-ref refs/tags/upstream-base "$new" "$old_ref"
+
+# Move both refs in one checked transaction; a failed hook or ref update leaves
+# the real index/worktree untouched. Exclusive operator access is still required.
+printf 'start\nupdate %s %s %s\nupdate refs/tags/upstream-base %s %s\nprepare\ncommit\n' \
+    "$branch" "$candidate" "$original" "$new" "$old_ref" | git update-ref --stdin
+
+# Refs have committed together. Refresh the checkout without discarding local edits.
+# If interrupted here, the exact two commits make recovery explicit.
+echo "Refs updated together: $original -> $candidate"
+if ! git read-tree -m -u "$original" "$candidate"; then
+    echo "Refs updated but checkout refresh failed; inspect status before recovering from $original to $candidate" >&2
+    exit 1
+fi
