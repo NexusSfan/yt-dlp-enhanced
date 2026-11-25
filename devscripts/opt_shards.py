@@ -269,8 +269,8 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
         print('OPT interrupted' if interrupted else f'OPT failed: {error}', file=sys.stderr)
         print('OPT failure receipt: ' + json.dumps({'head': head, 'outcome_parity_verified': False,
               'status': 'interrupted' if interrupted else 'failed',
-              'elapsed_seconds': round(time.monotonic() - started, 3),
-              'attempts': sorted(attempts, key=lambda item: item['name'])}, sort_keys=True), file=sys.stderr, flush=True)
+                                                    'elapsed_seconds': round(time.monotonic() - started, 3),
+                                                    'attempts': sorted(attempts, key=lambda item: item['name'])}, sort_keys=True), file=sys.stderr, flush=True)
         return 130 if interrupted else 1
 
 
