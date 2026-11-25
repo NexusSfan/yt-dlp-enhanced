@@ -33,6 +33,9 @@ def parse_args():
         '-k', help='run a test matching EXPRESSION. Same as "pytest -k"', metavar='EXPRESSION')
     parser.add_argument(
         '--pytest-args', help='arguments to passthrough to pytest')
+    parser.add_argument('--opt', action='store_true', default=False, help='Experimental deterministic core-test shards')
+    parser.add_argument('--verify', action='store_true', help='Compare OPT outcomes against a full serial oracle')
+    parser.add_argument('--workers', type=int, default=7, help='OPT worker count (default: 7)')
     return parser.parse_args()
 
 
@@ -86,7 +89,17 @@ if __name__ == '__main__':
     try:
         args = parse_args()
 
-        os.chdir(Path(__file__).parent.parent)
+        root = Path(__file__).resolve().parent.parent
+        os.chdir(root)
+        if not __package__:
+            sys.path.insert(0, str(root))
+        if args.verify and not args.opt:
+            sys.exit('--verify requires --opt')
+        if args.opt:
+            if args.test != ['core'] or args.pytest_args or os.getenv('HATCH_TEST_ARGS'):
+                sys.exit('OPT supports core only, without arbitrary pytest arguments or retries')
+            from devscripts.opt_shards import run_opt
+            sys.exit(run_opt(args.workers, pattern=args.k, flaky=args.flaky, ci=bool(os.getenv('CI')), verify=args.verify))
         sys.exit(run_tests(
             *args.test,
             pattern=args.k,
@@ -94,4 +107,4 @@ if __name__ == '__main__':
             flaky=args.flaky,
         ))
     except KeyboardInterrupt:
-        pass
+        sys.exit(130)

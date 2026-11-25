@@ -1890,7 +1890,7 @@ class YoutubeDL:
             return ie_result
 
     def reload_cookies(self):
-        if not self.params.get('cookie_reload', True):
+        if not self.params.get('cookie_reload', False):
             return False
         if self._cookie_reload_trial:
             self.write_debug('Automatic cookie reloading failed to obtain working cookies')
@@ -1900,10 +1900,11 @@ class YoutubeDL:
         try:
             self.write_debug('Reloading cookies from source...')
             new_jar = load_cookies(
-                self.params.get('cookiefile'), self.params.get('cookiesfrombrowser'), self)
-            self.cookiejar.clear()
-            for cookie in new_jar:
-                self.cookiejar.set_cookie(cookie)
+                self.params.get('cookiefile'), self.params.get('cookiesfrombrowser'), self, strict_file=True)
+            jar = self.cookiejar
+            # Preserve the jar object already shared with request handlers.
+            with jar._cookies_lock:
+                jar._cookies = new_jar._cookies
             self._cookie_reload_trial = True
             return True
         except Exception as e:

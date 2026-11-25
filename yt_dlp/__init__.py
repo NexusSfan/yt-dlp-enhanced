@@ -907,6 +907,7 @@ def parse_options(argv=None):
         'skip_playlist_after_errors': opts.skip_playlist_after_errors,
         'cookiefile': opts.cookiefile,
         'cookiesfrombrowser': opts.cookiesfrombrowser,
+        'cookie_reload': opts.cookie_reload,
         'legacyserverconnect': opts.legacy_server_connect,
         'nocheckcertificate': opts.no_check_certificate,
         'prefer_insecure': opts.prefer_insecure,

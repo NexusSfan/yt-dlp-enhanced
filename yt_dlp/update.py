@@ -11,6 +11,7 @@ import platform
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from zipimport import zipimporter
 
@@ -497,6 +498,10 @@ class Updater:
             self._report_error(err, True)
             return False
 
+        if not isinstance(update_info.checksum, str) or not re.fullmatch(r'[0-9a-fA-F]{64}', update_info.checksum):
+            self._report_error('Refusing update without a valid SHA-256 checksum', True)
+            return False
+
         self.ydl.to_screen(f'Current Build Hash: {_sha256_file(self.filename)}')
 
         update_label = _make_label(self.requested_repo, update_info.tag, update_info.version)
@@ -508,15 +513,9 @@ class Updater:
         elif not os.access(directory, os.W_OK):
             return self._report_permission_error(directory)
 
-        new_filename, old_filename = f'{self.filename}.new', f'{self.filename}.old'
-        if detect_variant() == 'zip':  # Can be replaced in-place
-            new_filename, old_filename = self.filename, None
-
-        try:
-            if os.path.exists(old_filename or ''):
-                os.remove(old_filename)
-        except OSError:
-            return self._report_error('Unable to remove the old version')
+        variant = detect_variant()
+        # Windows running executables may be renamed, but not replaced in place.
+        old_filename = f'{self.filename}.old' if variant.startswith('win') else None
 
         try:
             newcontent = self._download_asset(update_info.binary_name, update_info.tag)
@@ -526,45 +525,45 @@ class Updater:
                     f'The requested tag {self.requested_repo}@{update_info.tag} does not exist', True)
             return self._report_network_error(f'fetch updates: {e}', tag=update_info.tag)
 
-        if not update_info.checksum:
-            self._block_restart('Automatically restarting into unverified builds is disabled for security reasons')
-        elif hashlib.sha256(newcontent).hexdigest() != update_info.checksum:
-            return self._report_network_error('verify the new executable', tag=update_info.tag)
+        if hashlib.sha256(newcontent).hexdigest() != update_info.checksum.lower():
+            self._report_network_error('verify the new executable', tag=update_info.tag)
+            return False
 
+        # Create the stage exclusively in the destination directory for every variant.
+        staged = None
         try:
-            with open(new_filename, 'wb') as outf:
+            with tempfile.NamedTemporaryFile(dir=directory, prefix='.yt-dlp-update-', delete=False) as outf:
+                staged = outf.name
                 outf.write(newcontent)
+                outf.flush()
+                os.fsync(outf.fileno())
+            os.chmod(staged, os.stat(self.filename).st_mode)
+            if old_filename:
+                if os.path.lexists(old_filename):
+                    os.remove(old_filename)
+                os.rename(self.filename, old_filename)
+            try:
+                os.replace(staged, self.filename)
+                staged = None
+            except OSError:
+                if old_filename:
+                    try:
+                        os.rename(old_filename, self.filename)
+                    except OSError:
+                        self._report_error(f'Update failed; original executable retained at {old_filename}', True)
+                        return False
+                raise
         except OSError:
-            return self._report_permission_error(new_filename)
+            self._report_error('Unable to install verified update', True)
+            return False
+        finally:
+            if staged is not None:
+                with contextlib.suppress(OSError):
+                    os.remove(staged)
 
         if old_filename:
-            mask = os.stat(self.filename).st_mode
-            try:
-                os.rename(self.filename, old_filename)
-            except OSError:
-                return self._report_error('Unable to move current version')
-
-            try:
-                os.rename(new_filename, self.filename)
-            except OSError:
-                self._report_error('Unable to overwrite current version')
-                return os.rename(old_filename, self.filename)
-
-        variant = detect_variant()
-        if variant.startswith('win'):
             atexit.register(Popen, f'ping 127.0.0.1 -n 5 -w 1000 & del /F "{old_filename}"',
                             shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif old_filename:
-            try:
-                os.remove(old_filename)
-            except OSError:
-                self._report_error('Unable to remove the old version')
-
-            try:
-                os.chmod(self.filename, mask)
-            except OSError:
-                return self._report_error(
-                    f'Unable to set permissions. Run: sudo chmod a+rx {shell_quote(self.filename)}')
 
         self.ydl.to_screen(f'Updated yt-dlp to {update_label}')
         return True
