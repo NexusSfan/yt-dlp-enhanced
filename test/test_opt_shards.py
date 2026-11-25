@@ -8,7 +8,17 @@ import unittest
 from unittest.mock import patch
 
 from devscripts.opt_shards import assigned_modules, partition, verify_outcome_parity, verify_receipts
+from devscripts.strict_json import loads
 from devscripts.run_tests import parse_args
+
+
+def make_receipt(ids, *, outcome='passed', reason=None, xfail=None, digest=None):
+    phases = [['setup', 'passed'], ['call', outcome], ['teardown', 'passed']]
+    return {'schema': 1, 'collected': ids, 'full_collection': ids, 'exitstatus': 0,
+            'source_sha256': digest, 'reports': {nodeid: phases for nodeid in ids}, 'subtests': {},
+            'outcomes': {nodeid: [['parent', phase, result, reason if phase == 'call' else None,
+                                   xfail if phase == 'call' else None, None] for phase, result in phases]
+                         for nodeid in ids}}
 
 
 class TestOptShards(unittest.TestCase):
@@ -34,10 +44,9 @@ class TestOptShards(unittest.TestCase):
         first, second = ['test/a.py::test_a'], ['test/b.py::test_b']
 
         def receipt(ids):
-            return {'collected': ids, 'full_collection': ids, 'exitstatus': 0, 'source_sha256': 'source',
-                    'reports': {ids[0]: [['setup', 'passed'], ['call', 'passed'], ['teardown', 'passed']]}}
+            return make_receipt(ids, digest='a' * 64)
 
-        verify_receipts([first, second], [receipt(first), receipt(second)], source_digest='source')
+        verify_receipts([first, second], [receipt(first), receipt(second)], source_digest='a' * 64)
         with self.assertRaises(ValueError):
             verify_receipts([first, second], [receipt(first), receipt(second)], source_digest='wrong')
         with self.assertRaises(ValueError):
@@ -50,14 +59,13 @@ class TestOptShards(unittest.TestCase):
         ids = ['test/a.py::test_a', 'test/b.py::test_b']
 
         def receipt(nodeid, outcome, reason=None, xfail=None):
-            phases = [['setup', 'passed'], ['call', outcome], ['teardown', 'passed']]
-            details = [['parent', phase, result, reason if phase == 'call' else None,
-                        xfail if phase == 'call' else None, None] for phase, result in phases]
-            return {'reports': {nodeid: phases}, 'outcomes': {nodeid: details}}
+            return make_receipt([nodeid], outcome=outcome, reason=reason, xfail=xfail)
 
         first = receipt(ids[0], 'passed')
         second = receipt(ids[1], 'skipped', 'fixture unavailable')
-        reference = {key: {**first[key], **second[key]} for key in ('reports', 'outcomes')}
+        reference = make_receipt(ids)
+        for key in ('reports', 'outcomes'):
+            reference[key] = {**first[key], **second[key]}
         digest = verify_outcome_parity(reference, [first, second])
         self.assertEqual(digest, verify_outcome_parity(reference, [second, first]))
         for alternatives in (
@@ -156,10 +164,8 @@ class TestOptShards(unittest.TestCase):
 
     def test_receipt_fail_closed(self):
         ids = ['test/a.py::test_a']
-        good = {'collected': ids, 'full_collection': ids, 'exitstatus': 0, 'reports': {ids[0]: [
-            ['setup', 'passed'], ['call', 'passed'], ['teardown', 'passed']]}}
+        good = make_receipt(ids)
         verify_receipts([ids], [good])
-        verify_receipts([ids], [dict(good, subtests={ids[0]: ['passed', 'passed', 'skipped']})])
         with self.assertRaises(ValueError):
             verify_receipts([ids], [dict(good, subtests={ids[0]: ['failed']})])
         for receipts in [[], [dict(good, full_collection=[*ids, 'unexpected'])], [dict(good, exitstatus=1)], [dict(good, reports={})], [{'collected': [], 'reports': {}}],
@@ -167,3 +173,36 @@ class TestOptShards(unittest.TestCase):
                          [{'collected': ids, 'reports': {ids[0]: [['setup', 'passed']]}}]]:
             with self.assertRaises(ValueError):
                 verify_receipts([ids], receipts)
+
+    def test_strict_receipt_and_structured_subtest_identity(self):
+        ids = ['test/a.py::test_a']
+        nodeid = ids[0]
+
+        def receipt(params):
+            data = make_receipt(ids)
+            data['subtests'][nodeid] = ['passed']
+            data['outcomes'][nodeid].insert(1, ['subtest', 'call', 'passed', None, None, [0, 'None', params]])
+            return data
+
+        reference = receipt([['x', '1'], ['y', '2']])
+        verify_outcome_parity(reference, [reference])
+        with self.assertRaises(ValueError):
+            verify_outcome_parity(reference, [receipt([['x=1, y', '2']])])
+        for mutation in (dict(reference, exitstatus=False), dict(reference, schema=True),
+                         dict(reference, unknown=True)):
+            with self.assertRaises(ValueError):
+                verify_outcome_parity(mutation, [mutation])
+        for records in ([['parent', 'future', 'passed', None, None, None]],
+                        [['parent', 'setup', 'passed']], list(reversed(reference['outcomes'][nodeid]))):
+            broken = dict(reference, outcomes={nodeid: records})
+            with self.assertRaises(ValueError):
+                verify_outcome_parity(broken, [broken])
+        with self.assertRaises(ValueError):
+            loads('{"exitstatus":1,"exitstatus":0}')
+
+    def test_direct_script_opt_import(self):
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run([sys.executable, str(root / 'devscripts/run_tests.py'), '--opt',
+                                 '--workers', '0', 'core'], cwd=root, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn('OPT workers must be 1..32', result.stderr)

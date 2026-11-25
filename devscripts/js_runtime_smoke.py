@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import time
 
+from devscripts.strict_json import loads
+
 
 FIXTURE = '''
 const values = [1, 2, 3, 4, 5, 6, 7];
@@ -20,7 +22,8 @@ EXPECTED = {'total': 140, 'message': 'LOSQ', 'sorted': [1, 2, 7]}
 
 
 def check_output(output):
-    if json.loads(output) != EXPECTED:
+    actual = loads(output)
+    if json.dumps(actual, sort_keys=True) != json.dumps(EXPECTED, sort_keys=True):
         raise ValueError('JavaScript fixture outcome mismatch')
 
 

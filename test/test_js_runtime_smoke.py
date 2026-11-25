@@ -11,7 +11,9 @@ from devscripts.js_runtime_smoke import EXPECTED, check_output, run_smoke
 class TestJsRuntimeSmoke(unittest.TestCase):
     def test_fixed_output(self):
         check_output(json.dumps({'total': 140, 'message': 'LOSQ', 'sorted': [1, 2, 7]}))
-        for output in ('not JSON', '{}', '{"total": 141}'):
+        for output in ('not JSON', '{}', '{"total": 141}',
+                       '{"total":140,"message":"LOSQ","sorted":[true,2,7]}',
+                       '{"total":0,"total":140,"message":"LOSQ","sorted":[1,2,7]}'):
             with self.assertRaises(ValueError):
                 check_output(output)
 

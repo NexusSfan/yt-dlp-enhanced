@@ -89,7 +89,10 @@ if __name__ == '__main__':
     try:
         args = parse_args()
 
-        os.chdir(Path(__file__).parent.parent)
+        root = Path(__file__).resolve().parent.parent
+        os.chdir(root)
+        if not __package__:
+            sys.path.insert(0, str(root))
         if args.verify and not args.opt:
             sys.exit('--verify requires --opt')
         if args.opt:
