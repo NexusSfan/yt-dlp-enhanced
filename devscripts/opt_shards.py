@@ -68,7 +68,37 @@ def verify_receipts(expected, receipts, *, source_digest=None):
                 raise ValueError(f'missing call: {nodeid}')
 
 
-def run_opt(workers, *, pattern=None, flaky=None, ci=False):
+def outcome_ledger(receipts):
+    """Canonical observed pytest outcomes, including skip/xfail and subtest details."""
+    ledger = {}
+    for receipt in receipts:
+        details = receipt['outcomes']
+        if set(details) != set(receipt['reports']):
+            raise ValueError('missing or unexpected outcome details')
+        for nodeid, records in details.items():
+            if nodeid in ledger:
+                raise ValueError('duplicate outcome identity')
+            parents = [record[1:3] for record in records if record[0] == 'parent']
+            children = [record[2] for record in records if record[0] == 'subtest']
+            if parents != receipt['reports'][nodeid] or children != receipt.get('subtests', {}).get(nodeid, []):
+                raise ValueError(f'inconsistent outcome details: {nodeid}')
+            ledger[nodeid] = records
+    return ledger
+
+
+def verify_outcome_parity(reference, receipts):
+    """Compare observed identities, phases, outcomes, reasons and subtest order."""
+    expected = outcome_ledger([reference])
+    actual = outcome_ledger(receipts)
+    if expected.keys() != actual.keys():
+        raise ValueError('serial/parallel outcome identity mismatch')
+    mismatches = sorted(nodeid for nodeid in expected if expected[nodeid] != actual[nodeid])
+    if mismatches:
+        raise ValueError(f'serial/parallel outcome mismatch: {mismatches[:5]}')
+    return hashlib.sha256(json.dumps(expected, sort_keys=True, ensure_ascii=True).encode('ascii')).hexdigest()
+
+
+def run_opt(workers, *, pattern=None, flaky=None, ci=False, verify=False):
     if not 1 <= workers <= 32:
         print('OPT workers must be 1..32', file=sys.stderr)
         return 2
@@ -102,7 +132,8 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
                 verify_snapshot(dest, manifest)
                 return dest
 
-            def invoke(name, assigned=None):
+            def invoke(name, assigned=None, *, collect_only=False):
+                invocation_started = time.monotonic()
                 checkout = snapshot(name)
                 spec = temp / f'{name}.json'
                 result = temp / f'{name}-receipt.json'
@@ -113,35 +144,47 @@ def run_opt(workers, *, pattern=None, flaky=None, ci=False):
                 env.pop('PYTEST_PLUGINS', None)
                 env.pop('PYTHONPATH', None)
                 command = [sys.executable, '-m', 'pytest', *args]
-                if assigned is None:
+                if collect_only:
                     command.extend(('--collect-only', '-q'))
-                else:
+                elif assigned is not None:
                     command.extend(['--', *assigned_modules(assigned, source_paths)])
                 try:
                     proc = subprocess.run(command, cwd=checkout, env=env, timeout=900)
                     if proc.returncode:
                         raise ValueError(f'{name}: pytest exit {proc.returncode}')
-                    return json.loads(result.read_text(encoding='utf-8'))
+                    receipt = json.loads(result.read_text(encoding='utf-8'))
                 finally:
                     shutil.rmtree(checkout)
+                receipt['invocation_elapsed_seconds'] = round(time.monotonic() - invocation_started, 3)
+                return receipt
 
-            collection = invoke('collection')
+            # A full serial oracle already supplies the coordinator's manifest.
+            # Do not pay for a separate global collection in verification mode.
+            collection = invoke('reference' if verify else 'collection', collect_only=not verify)
             if collection.get('source_sha256') != source_digest or collection.get('exitstatus') != 0:
                 raise ValueError('invalid collection receipt')
             baseline = collection['collected']
             shards = partition(baseline, workers)
+            if verify:
+                verify_receipts([baseline], [collection], source_digest=source_digest)
+            parallel_started = time.monotonic()
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(shards)) as pool:
                 receipts = list(pool.map(lambda pair: invoke(f'shard-{pair[0]}', pair[1]), enumerate(shards)))
             verify_receipts(shards, receipts, source_digest=source_digest)
+            parallel_elapsed = round(time.monotonic() - parallel_started, 3)
+            outcome_digest = verify_outcome_parity(collection, receipts) if verify else None
             if subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, cwd=root).strip() != head or subprocess.check_output(['git', 'status', '--porcelain'], cwd=root).strip():
                 raise ValueError('checkout changed during execution')
             summary = {'head': head, 'source_sha256': source_digest, 'workers': len(shards), 'tests': len(baseline),
                        'collection_sha256': hashlib.sha256(json.dumps(sorted(baseline)).encode()).hexdigest(),
-                       'elapsed_seconds': round(time.monotonic() - started, 3), 'shard_sizes': list(map(len, shards)),
+                       'shard_sizes': list(map(len, shards)),
                        'module_counts': [len(assigned_modules(ids, source_paths)) for ids in shards],
-                       'outcome_parity_verified': False}
-            print('OPT source/coverage receipt: ' + json.dumps(summary, sort_keys=True), flush=True)
-            return 0
+                       'outcome_parity_verified': verify, 'outcome_sha256': outcome_digest,
+                       'reference_or_collection_seconds': collection['invocation_elapsed_seconds'],
+                       'parallel_phase_seconds': parallel_elapsed}
+        summary['elapsed_seconds'] = round(time.monotonic() - started, 3)
+        print('OPT source/coverage receipt: ' + json.dumps(summary, sort_keys=True), flush=True)
+        return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print(f'OPT failed: {error}', file=sys.stderr)
         return 1
@@ -152,6 +195,7 @@ _spec = None
 _reports = collections.defaultdict(list)
 _full_collection = []
 _subtests = collections.defaultdict(list)
+_outcomes = collections.defaultdict(list)
 
 
 def pytest_configure(config):
@@ -159,6 +203,7 @@ def pytest_configure(config):
     _reports.clear()
     _full_collection.clear()
     _subtests.clear()
+    _outcomes.clear()
     _spec = None
     path = os.environ.get('YTDLP_OPT_SPEC')
     if path:
@@ -185,10 +230,23 @@ def pytest_runtest_logreport(report):
         from _pytest.subtests import SubtestReport
     except ImportError:
         SubtestReport = ()
+    # Skip locations can include private workspace paths. Compare the reason,
+    # not the absolute temporary path or elapsed time.
+    reason = None
+    if report.skipped:
+        reason = str(report.longrepr[2] if isinstance(report.longrepr, tuple) else report.longrepr)
+    if reason is not None:
+        reason = reason.replace(str(Path.cwd()), '<source>')
+    xfail = getattr(report, 'wasxfail', None)
+    if xfail is not None:
+        xfail = str(xfail).replace(str(Path.cwd()), '<source>')
     if isinstance(report, SubtestReport):
         _subtests[report.nodeid].append(report.outcome)
+        label = report.head_line.replace(str(Path.cwd()), '<source>')
+        _outcomes[report.nodeid].append(['subtest', report.when, report.outcome, reason, xfail, label])
     else:
         _reports[report.nodeid].append([report.when, report.outcome])
+        _outcomes[report.nodeid].append(['parent', report.when, report.outcome, reason, xfail, None])
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -198,6 +256,7 @@ def pytest_sessionfinish(session, exitstatus):
             'full_collection': _full_collection,
             'reports': dict(_reports),
             'subtests': dict(_subtests),
+            'outcomes': dict(_outcomes),
             'exitstatus': int(exitstatus),
             'source_sha256': _spec.get('source_sha256'),
         }), encoding='utf-8')

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from devscripts.opt_shards import assigned_modules, partition, verify_receipts
+from devscripts.opt_shards import assigned_modules, partition, verify_outcome_parity, verify_receipts
 from devscripts.run_tests import parse_args
 
 
@@ -45,6 +45,28 @@ class TestOptShards(unittest.TestCase):
         broad = dict(receipt(first), full_collection=[*first, *second])
         with self.assertRaises(ValueError):
             verify_receipts([first, second], [broad, receipt(second)], source_digest='source')
+
+    def test_outcome_parity_rejects_same_counts_different_outcomes(self):
+        ids = ['test/a.py::test_a', 'test/b.py::test_b']
+
+        def receipt(nodeid, outcome, reason=None, xfail=None):
+            phases = [['setup', 'passed'], ['call', outcome], ['teardown', 'passed']]
+            details = [['parent', phase, result, reason if phase == 'call' else None,
+                        xfail if phase == 'call' else None, None] for phase, result in phases]
+            return {'reports': {nodeid: phases}, 'outcomes': {nodeid: details}}
+
+        first = receipt(ids[0], 'passed')
+        second = receipt(ids[1], 'skipped', 'fixture unavailable')
+        reference = {key: {**first[key], **second[key]} for key in ('reports', 'outcomes')}
+        digest = verify_outcome_parity(reference, [first, second])
+        self.assertEqual(digest, verify_outcome_parity(reference, [second, first]))
+        for alternatives in (
+                [receipt(ids[0], 'skipped', 'fixture unavailable'), receipt(ids[1], 'passed')],
+                [first, receipt(ids[1], 'skipped', 'different reason')],
+                [first, receipt(ids[1], 'skipped', 'fixture unavailable', 'expected failure')],
+                [first], [first, first, second]):
+            with self.assertRaises(ValueError):
+                verify_outcome_parity(reference, alternatives)
 
     def test_cli(self):
         with patch('sys.argv', ['run_tests', '--opt', '--workers', '7', 'core']):
@@ -111,9 +133,10 @@ class TestOptShards(unittest.TestCase):
                 return subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'devscripts.opt_shards',
                                        '-k', 'keep', *extra], cwd=tmp, env=env, capture_output=True, text=True, timeout=60)
 
-            result = invoke(None, '--collect-only')
+            result = invoke(None)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            baseline = json.loads(receipt.read_text(encoding='utf-8'))['collected']
+            reference = json.loads(receipt.read_text(encoding='utf-8'))
+            baseline = reference['collected']
             shards = partition(baseline, 2)
             receipts = []
             for ids in shards:
@@ -121,6 +144,7 @@ class TestOptShards(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 receipts.append(json.loads(receipt.read_text(encoding='utf-8')))
             verify_receipts(shards, receipts)
+            verify_outcome_parity(reference, receipts)
             # Reject an unexpected selected test before running any of that shard.
             result = invoke(shards[0], '--', 'test_a.py', 'test_b.py')
             self.assertNotEqual(result.returncode, 0)

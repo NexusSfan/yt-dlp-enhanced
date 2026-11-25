@@ -8,9 +8,17 @@ Baseline: `29490a6c9b53e1b9d2c2471c48303afbc44c4796`. Experimental branch only; 
 uv run python -m devscripts.run_tests --opt --workers 7 core
 ```
 
-The existing serial command and compatibility CI remain authoritative. OPT is an opt-in experimental core-only path, with 1–32 workers, deterministic module grouping and isolated private copies of one raw committed Git object generation. It refuses a dirty checkout, unsupported tracked symlinks, empty/duplicate collections, arbitrary pytest arguments and failed/incomplete shard receipts. It retains the core marker and flaky-selection policy. It does not introduce runtime dependencies or retries. It requires Git and the existing pytest test dependencies in the selected interpreter. One global collection defines selected IDs; each worker collects only its assigned modules under the same marker and keyword filters. Workers reject missing/extra IDs before execution. Private copies are removed after their subprocess completes. The receipt records source and coverage checks, not serial/parallel outcome parity; compare separate runs before promotion. The snapshots use raw Git blobs, verified against Git object IDs and a SHA-256 byte/mode manifest; checkout filters and export-ignore do not apply. The trusted launcher, interpreter and plugins are outside this source-byte receipt's scope. It is not protection against malicious test code or a compromised Git/interpreter. Snapshots omit ignored/untracked generated files and Git metadata; tests depending on those may fail and must be investigated, not silently skipped. This is not a verified speedup.
+The existing serial command and compatibility CI remain authoritative. OPT is an opt-in experimental core-only path, with 1–32 workers, deterministic module grouping and isolated private copies of one raw committed Git object generation. It refuses a dirty checkout, unsupported tracked symlinks, empty/duplicate collections, arbitrary pytest arguments and failed/incomplete shard receipts. It retains the core marker and flaky-selection policy. It does not introduce runtime dependencies or retries. It requires Git and the existing pytest test dependencies in the selected interpreter. One global collection defines selected IDs; each worker collects only its assigned modules under the same marker and keyword filters. Workers reject missing/extra IDs before execution. Private copies are removed after their subprocess completes. The ordinary OPT invocation records source and coverage checks. Use the explicit verification mode below to compare observed per-test outcomes before promotion. The snapshots use raw Git blobs, verified against Git object IDs and a SHA-256 byte/mode manifest; checkout filters and export-ignore do not apply. The trusted launcher, interpreter and plugins are outside this source-byte receipt's scope. It is not protection against malicious test code or a compromised Git/interpreter. Snapshots omit ignored/untracked generated files and Git metadata; tests depending on those may fail and must be investigated, not silently skipped. This is not a verified speedup.
 
-OPT provenance: QSOLKCB/OPT v1.4.0, OPT-PY-001, OPT-PAR-001, OPT-CRIT-001, OPT-BUDGET-001. Conceptual adaptations, not a dependency or theorem transfer.
+OPT provenance: QSOLKCB/OPT v1.5.0 (`2e521bba0f10f84046a59dfd5c3daee31b37d697`), OPT-PY-001, OPT-PAR-001, OPT-CRIT-001, OPT-BUDGET-001, OPT-HYBRID-001. Conceptual adaptations, not a dependency or theorem transfer.
+
+## Outcome qualification (C-03)
+
+```sh
+uv run --locked --no-default-groups --group test --extra pin-curl-cffi python -m devscripts.run_tests --opt --verify --workers 7 core
+```
+
+The full serial run and workers use private copies of the same source generation and the same interpreter, selection options and installed environment. The serial run supplies the selected IDs, avoiding another complete coordinator collection. The verifier compares parent lifecycle outcomes, skip reasons, expected-failure annotations and ordered subtest labels/outcomes by node ID; count equality is not sufficient. A mismatch fails without fallback. The receipt distinguishes the serial oracle/collection interval, the parallel phase and total elapsed time including materialisation and cleanup. These are staged-run measurements, not a benchmark against ordinary serial execution. The full verification cost is paid by this invocation. Test outcome parity is an observation, not proof of identical side effects or dependencies' immutable bytes. Logs remain diagnostic and are not transactionally staged. Do not use these receipts for automatic promotion.
 
 ## Audit follow-up
 
@@ -18,7 +26,7 @@ YTDLP-AUDIT-001 (candidate `42e72529d839d2e862373386c611896fef602d3d`): C-01 and
 
 ## Remaining acceptance work
 
-- Run serial and OPT in matching environments, compare exact selection, outcomes and skip reasons; measure wall time including copying and collection, memory and runner time.
+- Validate the new C-03 outcome gate across the full workload; measure ordinary serial and qualified OPT under symmetric lifecycle boundaries, including memory and runner time.
 - Validate on Ubuntu and Windows; retain all existing compatibility and security checks.
 - Test upstream sync in temporary repositories, including failed fetch, apply, commit and ref update. A failed commit can leave staged changes; inspect before retrying. A failed tag compare-and-swap leaves the integration commit for review; no automatic rollback.
 - Validate CLI opt-in and explicit opt-out using synthetic configuration fixtures only.
