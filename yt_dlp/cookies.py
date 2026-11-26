@@ -1012,7 +1012,7 @@ def _get_mac_keyring_password(browser_keyring_name, logger):
              '-w',  # write password to stdout
              '-a', browser_keyring_name,  # match 'account'
              '-s', f'{browser_keyring_name} Storage Key' if browser_keyring_name == 'Helium'
-                   else f'{browser_keyring_name} Safe Storage'],  # match 'service'
+             else f'{browser_keyring_name} Safe Storage'],  # match 'service'
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         if returncode:
             logger.warning('find-generic-password failed')
