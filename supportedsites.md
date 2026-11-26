@@ -1,8 +1,8 @@
 # Supported sites
 
-Below is a list of all extractors that are currently included with yt-dlp-enhanced.
-If a site is not listed here, it might still be supported by yt-dlp-enhanced's embed extraction or generic extractor.
-Not all sites listed here are guaranteed to work; websites are constantly changing and sometimes this breaks yt-dlp-enhanced's support for them.
+Below is a list of all extractors that are currently included with yt-dlp[-enhanced].
+If a site is not listed here, it might still be supported by yt-dlp's embed extraction or generic extractor.
+Not all sites listed here are guaranteed to work; websites are constantly changing and sometimes this breaks yt-dlp's support for them.
 The only reliable way to check if a site is supported is to try it.
 
  - **10play**: [*10play*](## "netrc machine")
@@ -28,6 +28,7 @@ The only reliable way to check if a site is supported is to try it.
  - **9now.com.au**
  - **abc.net.au**
  - **abc.net.au:iview**
+ - **abc.net.au:​iview:show**
  - **abc.net.au:​iview:showseries**
  - **abcnews**
  - **abcnews:video**
@@ -477,6 +478,7 @@ The only reliable way to check if a site is supported is to try it.
  - **gem.cbc.ca:live**: [*cbcgem*](## "netrc machine")
  - **gem.cbc.ca:olympics**: [*cbcgem*](## "netrc machine")
  - **gem.cbc.ca:playlist**: [*cbcgem*](## "netrc machine")
+ - **generic**: Generic downloader that works on some sites
  - **Genius**
  - **GeniusLyrics**
  - **Germanupa**: germanupa.de
@@ -647,9 +649,7 @@ The only reliable way to check if a site is supported is to try it.
  - **kuwo:mv**: 酷我音乐 - MV (**Currently broken**)
  - **kuwo:singer**: 酷我音乐 - 歌手 (**Currently broken**)
  - **kuwo:song**: 酷我音乐 (**Currently broken**)
- - **la7.it**
- - **la7.it:​pod:episode**
- - **la7.it:podcast**
+ - **la7play.it**
  - **laracasts**
  - **laracasts:series**
  - **LastFM**
@@ -730,6 +730,7 @@ The only reliable way to check if a site is supported is to try it.
  - **media.ccc.de:lists**
  - **Mediaite**
  - **MediaKlikk**
+ - **MediaKlikkAudio**: MédiaKlikk radio archive (Magyar Rádió)
  - **Medialaan**
  - **Mediaset**
  - **MediasetShow**
@@ -1002,8 +1003,6 @@ The only reliable way to check if a site is supported is to try it.
  - **peloton**: [*peloton*](## "netrc machine")
  - **peloton:live**: Peloton Live
  - **PerformGroup**
- - **periscope**: Periscope
- - **periscope:user**: Periscope user videos
  - **PGATour**
  - **PhilharmonieDeParis**: Philharmonie de Paris
  - **phoenix.de**
@@ -1491,6 +1490,7 @@ The only reliable way to check if a site is supported is to try it.
  - **twitter:amplify**
  - **twitter:broadcast**
  - **twitter:card**
+ - **twitter:event**
  - **twitter:shortener**
  - **twitter:spaces**
  - **Txxx**

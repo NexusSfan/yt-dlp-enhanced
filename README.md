@@ -890,6 +890,10 @@ Tip: Use `CTRL`+`F` (or `Command`+`F`)  to search by keywords
                                     Password for client certificate private key,
                                     if encrypted. If not provided, and the key
                                     is encrypted, yt-dlp will ask interactively
+    --cookie-reload                 Reload cookies if auth cookies are
+                                    rotated/invalid
+    --no-cookie-reload              Do not reload cookies if auth cookies are
+                                    rotated/invalid (default)
 
 ## Post-Processing Options:
     -x, --extract-audio             Convert video files to audio-only files
