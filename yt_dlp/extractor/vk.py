@@ -964,7 +964,7 @@ class VKPlayLiveIE(VKPlayBaseIE):
         else:
             stream_info = self._download_json(
                 f'https://api.vkplay.live/v1/blog/{username}/public_video_stream', video_id, fatal=False)
-            
+
         if not stream_info:
             stream_info = self._extract_from_initial_state(url, video_id, ('stream', 'stream', 'data', 'stream'))
 
@@ -972,13 +972,13 @@ class VKPlayLiveIE(VKPlayBaseIE):
         if not formats and not traverse_obj(stream_info, ('isOnline', {bool})):
             if not traverse_obj(stream_info, ('plannedAt', {int_or_none})):
                 raise UserNotLive(video_id=video_id)
-            
+
             self.raise_no_formats('This live event has not started', expected=True, video_id=video_id)
-            
+
             return {
                 **self._extract_common_meta(stream_info),
                 'is_live': None,
-                'live_status': 'is_upcoming'
+                'live_status': 'is_upcoming',
             }
 
         return {
