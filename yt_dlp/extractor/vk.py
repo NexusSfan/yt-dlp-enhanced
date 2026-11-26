@@ -946,10 +946,10 @@ class VKPlayLiveIE(VKPlayBaseIE):
     }, {
         'url': 'https://live.vkvideo.ru/sportcastnhl/stream/sl_519058',
         'only_matching': True,
-    },{
+    }, {
         'url': 'https://live.vkvideo.ru/channel31804066/stream/sl_503220?tab=slots',
         'only_matching': True,
-    },{
+    }, {
         'url': 'https://live.vkvideo.ru/channel31804066/stream/sl_503232/',
         'only_matching': True,
     }]
