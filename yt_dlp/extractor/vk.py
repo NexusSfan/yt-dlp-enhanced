@@ -987,6 +987,7 @@ class VKPlayLiveIE(VKPlayBaseIE):
             'formats': formats,
         }
 
+
 class VKVideoAnonIE(InfoExtractor):
     _VALID_URL = r'https?://(?:www\.)?vkvideo\.ru/video-(?P<id>\d+_\d+)'
     _WORKING = True
