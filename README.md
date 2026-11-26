@@ -1,7 +1,7 @@
 <!-- MANPAGE: BEGIN EXCLUDED SECTION -->
 <div align="center">
 
-[![YT-DLP ENHANCED](https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/.github/banner.svg)](#readme)
+[![YT-DLP ENHANCED](https://github.com/user-attachments/assets/2217cbed-bc2a-4ab1-9e41-4cc9a61f5a6e)](#readme)
 
 [![Release version](https://img.shields.io/github/v/release/jbruchon/yt-dlp-enhanced?color=brightgreen&label=Latest&style=for-the-badge)](#installation "Installation")
 [![Python Version](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fjbruchon%2Fyt-dlp-enhanced%2Frefs%2Fheads%2Fmaster%2Fpyproject.toml&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/blob/master/pyproject.toml "Python Version")
