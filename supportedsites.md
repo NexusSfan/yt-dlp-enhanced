@@ -99,6 +99,7 @@ The only reliable way to check if a site is supported is to try it.
  - **ArteTVCategory**
  - **ArteTVEmbed**
  - **ArteTVPlaylist**
+ - **ashemaletube**
  - **asobichannel**: ASOBI CHANNEL
  - **asobichannel:tag**: ASOBI CHANNEL
  - **AsobiStage**: ASOBISTAGE (アソビステージ)
@@ -1323,11 +1324,13 @@ The only reliable way to check if a site is supported is to try it.
  - **StreamCZ**
  - **StreetVoice**
  - **Stripchat**
+ - **Studyflix**
  - **stv:player**
  - **stvr**: Slovak Television and Radio (formerly RTVS)
  - **Subsplash**
  - **subsplash:playlist**
  - **Substack**
+ - **Suno**: Suno (metadata only)
  - **SunPorno**
  - **sverigesradio:episode**
  - **sverigesradio:publication**
@@ -1385,6 +1388,7 @@ The only reliable way to check if a site is supported is to try it.
  - **theatercomplextown:vod**: [*theatercomplextown*](## "netrc machine")
  - **TheChosen**
  - **TheChosenGroup**: (**Currently broken**)
+ - **TheGay**
  - **TheGuardianPodcast**
  - **TheGuardianPodcastPlaylist**
  - **TheHighWire**
@@ -1628,6 +1632,7 @@ The only reliable way to check if a site is supported is to try it.
  - **WeVidi**
  - **whowatch**: (**Currently broken**)
  - **Whyp**
+ - **Wibes**
  - **wikimedia.org**
  - **Wimbledon**
  - **WimTV**
