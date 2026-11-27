@@ -10,6 +10,7 @@ import email.header
 import email.utils
 import enum
 import errno
+import fractions
 import functools
 import hashlib
 import hmac
@@ -2089,6 +2090,18 @@ def strftime_or_none(timestamp, date_format='%Y%m%d', default=None):
         return datetime_object.strftime(date_format)
     except (ValueError, TypeError, AttributeError, OverflowError, OSError):
         return default
+
+
+def fraction_or_none(s):
+    if s is None or isinstance(s, bool):
+        return None
+    try:
+        result = fractions.Fraction(s)
+    except (ValueError, TypeError, ZeroDivisionError, OverflowError):
+        return None
+    if result < 0:
+        return None
+    return result.numerator if result.denominator == 1 else float(result)
 
 
 def parse_duration(s):

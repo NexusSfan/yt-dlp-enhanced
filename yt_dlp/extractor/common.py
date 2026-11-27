@@ -65,6 +65,7 @@ from ..utils import (
     fix_xml_ampersands,
     float_or_none,
     format_field,
+    fraction_or_none,
     int_or_none,
     join_nonempty,
     js_to_json,
@@ -3039,13 +3040,6 @@ class InfoExtractor:
                     if mpd_id:
                         format_id = mpd_id + '-' + format_id
                     if content_type in ('video', 'audio'):
-                        fps = representation_attrib.get('frameRate') or ''
-                        if m := re.fullmatch(r'([0-9]+)/([0-9]+)', fps):
-                            fps = None
-                            with contextlib.suppress(ValueError, ZeroDivisionError, OverflowError):
-                                fps = int(m[1]) / int(m[2])
-                        else:
-                            fps = int_or_none(fps)
                         f = {
                             'format_id': format_id,
                             'manifest_url': mpd_url,
@@ -3054,7 +3048,7 @@ class InfoExtractor:
                             'height': int_or_none(representation_attrib.get('height')),
                             'tbr': float_or_none(bandwidth, 1000),
                             'asr': int_or_none(representation_attrib.get('audioSamplingRate')),
-                            'fps': fps,
+                            'fps': fraction_or_none(representation_attrib.get('frameRate')),
                             'language': lang if lang not in ('mul', 'und', 'zxx', 'mis') else None,
                             'format_note': join_nonempty(f'DASH {content_type}', supplemental_codecs, delim=', '),
                             'filesize': filesize,
