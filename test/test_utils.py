@@ -424,7 +424,7 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(datetime_from_str('20210131+59day', precision='day'), datetime_from_str('20210131+2month', precision='auto'))
         self.assertEqual(datetime_from_str('now+1day', precision='hour'), datetime_from_str('now+24hours', precision='auto'))
         self.assertEqual(datetime_from_str('now+23hours', precision='hour'), datetime_from_str('now+23hours', precision='auto'))
-        self.assertEqual(datetime_from_str('20260101+1day+2hours'), dt.datetime(2026, 1, 2, 2, tzinfo=dt.timezone.utc))
+        self.assertEqual(datetime_from_str('20260101+1day+2hours'), dt.datetime(2026, 1, 2, 2, tzinfo=dt.UTC))
         self.assertRaises(ValueError, datetime_from_str, '20260101+1day_')
         self.assertRaises(ValueError, datetime_from_str, '20260101+1day_+2hours')
         self.assertRaises(ValueError, datetime_from_str, '20260101+1day\n')
@@ -787,6 +787,17 @@ class TestUtil(unittest.TestCase):
             fix_xml_ampersands('&#128512;&#x1F600;'), '&#128512;&#x1F600;')
         self.assertEqual(fix_xml_ampersands('&#;&#x;'), '&amp;#;&amp;#x;')
         self.assertEqual(fix_xml_ampersands('&#&#'), '&amp;#&amp;#')
+        # Out-of-range or malformed numeric character references should have '&' escaped
+        self.assertEqual(fix_xml_ampersands('&#x110000;'), '&amp;#x110000;')
+        self.assertEqual(fix_xml_ampersands('&#1114112;'), '&amp;#1114112;')
+        self.assertEqual(fix_xml_ampersands('&#' + '9' * 8 + ';'), '&amp;#' + '9' * 8 + ';')
+        self.assertEqual(fix_xml_ampersands('&#x' + 'f' * 7 + ';'), '&amp;#x' + 'f' * 7 + ';')
+        self.assertEqual(fix_xml_ampersands('&#1234'), '&amp;#1234')
+        self.assertEqual(fix_xml_ampersands('&#x1F600'), '&amp;#x1F600')
+        self.assertEqual(fix_xml_ampersands('&#12ab;'), '&amp;#12ab;')
+        self.assertEqual(fix_xml_ampersands('&#xZZZZ;'), '&amp;#xZZZZ;')
+        self.assertEqual(fix_xml_ampersands('&#;'), '&amp;#;')
+        self.assertEqual(fix_xml_ampersands('&#x;'), '&amp;#x;')
 
     def test_paged_list(self):
         def testPL(size, pagesize, sliceargs, expected):

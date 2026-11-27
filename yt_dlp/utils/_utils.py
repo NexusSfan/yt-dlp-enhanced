@@ -1939,12 +1939,22 @@ def month_by_abbreviation(abbrev):
         return None
 
 
+_XML_OUT_OF_RANGE_RE = re.compile(r'&#(?:[xX]([0-9a-fA-F]{1,6})|([0-9]{1,7}));')
+
+
 def fix_xml_ampersands(xml_str):
     """Replace all the '&' by '&amp;' in XML"""
+    def _fix_out_of_range(m):
+        hex_val, dec_val = m.group(1), m.group(2)
+        val = int(hex_val, 16) if hex_val is not None else int(dec_val, 10)
+        return f'&amp;{m.group(0)[1:]}' if val > 0x10FFFF else m.group(0)
+
+    xml_str = _XML_OUT_OF_RANGE_RE.sub(_fix_out_of_range, xml_str)
     return re.sub(
-        r'&(?!amp;|lt;|gt;|apos;|quot;|#x[0-9a-fA-F]+;|#[0-9]+;)',
+        r'&(?!(?:amp|lt|gt|apos|quot);|#[xX][0-9a-fA-F]{1,6};|#[0-9]{1,7};)',
         '&amp;',
-        xml_str)
+        xml_str,
+    )
 
 
 def setproctitle(title):
